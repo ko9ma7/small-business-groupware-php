@@ -1,0 +1,482 @@
+:root {
+    --ex-bg: #f3f6f9;
+    --ex-surface: #ffffff;
+    --ex-line: #dbe3eb;
+    --ex-text: #172033;
+    --ex-muted: #68758a;
+    --ex-blue: #2563eb;
+    --ex-blue-soft: #eff6ff;
+    --ex-green: #0f766e;
+    --ex-red: #b42318;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--ex-bg);
+    color: var(--ex-text);
+    font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, .24);
+    outline-offset: 2px;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.ex-shell {
+    width: min(1260px, calc(100% - 32px));
+    margin: 0 auto;
+}
+
+.ex-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    background: #172033;
+    color: white;
+}
+
+.ex-header-inner {
+    display: flex;
+    min-height: 64px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.ex-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.ex-brand-mark {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--ex-blue);
+}
+
+.ex-nav {
+    display: flex;
+    gap: 4px;
+}
+
+.ex-nav a {
+    padding: 8px 11px;
+    border-radius: 8px;
+    color: #b9c4d5;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.ex-nav a:hover,
+.ex-nav a.active {
+    background: rgba(255, 255, 255, .1);
+    color: white;
+}
+
+.ex-page {
+    padding: 28px 0 48px;
+}
+
+.ex-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.ex-heading h1 {
+    margin: 0;
+    font-size: 25px;
+    text-wrap: balance;
+}
+
+.ex-heading p {
+    margin: 5px 0 0;
+    color: var(--ex-muted);
+    text-wrap: pretty;
+}
+
+.ex-card {
+    border: 1px solid var(--ex-line);
+    border-radius: 14px;
+    background: var(--ex-surface);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+
+.ex-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(310px, .65fr);
+    gap: 18px;
+}
+
+.ex-card-head {
+    display: flex;
+    min-height: 62px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--ex-line);
+}
+
+.ex-card-head h2,
+.ex-card-head h3 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.ex-card-head p {
+    margin: 2px 0 0;
+    color: var(--ex-muted);
+    font-size: 12px;
+}
+
+.ex-card-body {
+    padding: 18px;
+}
+
+.ex-button {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 14px;
+    border: 1px solid var(--ex-line);
+    border-radius: 9px;
+    background: white;
+    color: var(--ex-text);
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.ex-button.primary {
+    border-color: var(--ex-blue);
+    background: var(--ex-blue);
+    color: white;
+}
+
+.ex-button.danger {
+    border-color: #efb5b0;
+    background: #fef3f2;
+    color: var(--ex-red);
+}
+
+.ex-steps {
+    display: grid;
+    gap: 18px;
+}
+
+.ex-step {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 12px;
+}
+
+.ex-step-number {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--ex-blue-soft);
+    color: var(--ex-blue);
+    font-weight: 900;
+}
+
+.ex-step h3 {
+    margin: 3px 0 9px;
+    font-size: 15px;
+}
+
+.ex-field {
+    display: grid;
+    gap: 6px;
+}
+
+.ex-field label {
+    color: #435067;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.ex-field input,
+.ex-field select,
+.ex-field textarea {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #c8d2de;
+    border-radius: 9px;
+    background: white;
+    color: var(--ex-text);
+}
+
+.ex-field textarea {
+    min-height: 92px;
+    resize: vertical;
+}
+
+.ex-target {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ex-target select {
+    flex: 1;
+    min-width: 0;
+}
+
+.ex-mode-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.ex-mode {
+    display: grid;
+    min-height: 72px;
+    place-items: center;
+    padding: 10px;
+    border: 1px solid var(--ex-line);
+    border-radius: 10px;
+    background: white;
+    color: var(--ex-muted);
+    text-align: center;
+    cursor: pointer;
+}
+
+.ex-mode:has(input:checked) {
+    border-color: var(--ex-blue);
+    background: var(--ex-blue-soft);
+    color: #1d4ed8;
+    font-weight: 800;
+}
+
+.ex-mode input {
+    position: absolute;
+    opacity: 0;
+}
+
+.ex-period-fields > div {
+    display: none;
+}
+
+.ex-period-fields[data-mode="daily"] .period-daily,
+.ex-period-fields[data-mode="weekly"] .period-weekly,
+.ex-period-fields[data-mode="monthly"] .period-monthly {
+    display: grid;
+}
+
+.ex-main-input {
+    min-height: 52px !important;
+    font-size: 17px !important;
+    font-weight: 750;
+}
+
+.ex-help {
+    color: var(--ex-muted);
+    font-size: 11px;
+}
+
+.ex-details {
+    border: 1px solid var(--ex-line);
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.ex-details summary {
+    padding: 12px 14px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.ex-details-content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 0 14px 14px;
+}
+
+.ex-submit {
+    width: 100%;
+    min-height: 50px;
+    font-size: 16px;
+}
+
+.ex-message {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border: 1px solid;
+    border-radius: 10px;
+}
+
+.ex-message.success {
+    border-color: #9bd8ce;
+    background: #ecfdf5;
+    color: var(--ex-green);
+}
+
+.ex-message.error {
+    border-color: #efb5b0;
+    background: #fef3f2;
+    color: var(--ex-red);
+}
+
+.ex-recent {
+    display: grid;
+}
+
+.ex-recent-item {
+    padding: 13px 17px;
+    border-bottom: 1px solid var(--ex-line);
+}
+
+.ex-recent-item:last-child {
+    border-bottom: 0;
+}
+
+.ex-recent-item strong {
+    display: block;
+}
+
+.ex-recent-item small {
+    display: block;
+    margin-top: 4px;
+    color: var(--ex-muted);
+}
+
+.ex-badge {
+    display: inline-flex;
+    padding: 3px 8px;
+    border-radius: 99px;
+    background: var(--ex-blue-soft);
+    color: #1d4ed8;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.ex-empty {
+    padding: 32px 18px;
+    color: var(--ex-muted);
+    text-align: center;
+}
+
+.ex-admin-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.ex-table-wrap {
+    overflow-x: auto;
+}
+
+.ex-table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+}
+
+.ex-table th,
+.ex-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--ex-line);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.ex-table th {
+    background: #f8fafc;
+    color: var(--ex-muted);
+    font-size: 11px;
+}
+
+.ex-stack {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+}
+
+.ex-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+}
+
+.ex-tabs a {
+    padding: 9px 13px;
+    border: 1px solid var(--ex-line);
+    border-radius: 9px;
+    background: white;
+    color: var(--ex-muted);
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.ex-tabs a.active {
+    border-color: var(--ex-blue);
+    background: var(--ex-blue);
+    color: white;
+}
+
+@media (max-width: 920px) {
+    .ex-nav {
+        display: none;
+    }
+
+    .ex-layout,
+    .ex-admin-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .ex-shell {
+        width: min(100% - 24px, 1260px);
+    }
+
+    .ex-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .ex-details-content {
+        grid-template-columns: 1fr;
+    }
+}
+
