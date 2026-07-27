@@ -294,7 +294,7 @@ $today_weekday = $weekday_labels[(int)date('w')];
 
         const cEditor = new toastui.Editor({
             el: document.querySelector('#commentEditor'), height: '200px', initialEditType: 'wysiwyg', toolbarItems: [['bold', 'italic', 'strike'], ['image', 'link']],
-            hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } }
+            hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); fd.append('smw_csrf', <?= json_encode(smw_csrf_token()) ?>); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } }
         });
 
         let currentTaskId = 0;

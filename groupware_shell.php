@@ -11,6 +11,7 @@ if (!function_exists('smw_render_shell_header')) {
                 'approval_list.php' => 'approval', 'approval_process.php' => 'approval',
                 'board.php' => 'board', 'address_book.php' => 'people', 'profile.php' => 'profile',
                 'admin.php' => 'admin', 'organization_admin.php' => 'organization', 'schedule.php' => 'schedule',
+                'audit_log.php' => 'audit',
             ];
             $active = $map[$page] ?? '';
         }
@@ -19,6 +20,7 @@ if (!function_exists('smw_render_shell_header')) {
             'dashboard' => '통합 대시보드', 'daily' => '일일 업무 관리', 'weekly' => '주간 업무 보고',
             'approval' => '전자결재', 'board' => '사내 게시판', 'people' => '임직원 주소록',
             'profile' => '내 정보', 'admin' => '시스템 관리', 'organization' => '회사·사업부 관리', 'schedule' => '사내 일정',
+            'audit' => '관리 변경 이력',
         ];
         global $conn;
         $identity = isset($conn) && $conn instanceof mysqli
@@ -34,6 +36,7 @@ if (!function_exists('smw_render_shell_header')) {
             ['people', 'address_book.php', 'fa-address-book', '주소록'],
         ];
         if ($isAdmin) $items[] = ['organization', 'organization_admin.php', 'fa-sitemap', '조직 관리'];
+        if ($isAdmin) $items[] = ['audit', 'audit_log.php', 'fa-shield-halved', '감사 로그'];
         ?>
         <header class="gw-topbar">
             <div class="gw-topbar-inner">

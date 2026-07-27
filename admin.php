@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $tid = (int)$_POST['target_uid'];
         if($tid === $uid) die(json_encode(['success'=>false, 'msg'=>'본인은 삭제 불가']));
         $conn->query("DELETE FROM users WHERE id = $tid");
+        smw_audit_log($conn, 'user.delete', 'user', $tid, '관리자가 사용자 계정을 삭제했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'삭제되었습니다.']); exit;
     }
     if ($action === 'update_user') {
@@ -42,10 +43,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         
         $pw_query = "";
         if (!empty($_POST['new_password'])) {
+            $password_error = smw_password_error((string)$_POST['new_password']);
+            if ($password_error !== '') {
+                echo json_encode(['success'=>false, 'msg'=>$password_error]); exit;
+            }
             $hashed_pw = password_hash($_POST['new_password'], PASSWORD_DEFAULT);
             $pw_query = ", password = '$hashed_pw'";
         }
         $conn->query("UPDATE users SET is_admin=$set_admin, nickname='$nickname', position='$position', phone='$phone', email='$email', birth_type='$b_type', birth_date=$b_date $pw_query WHERE id=$tid");
+        smw_audit_log($conn, 'user.update', 'user', $tid, '관리자가 사용자 정보와 권한을 변경했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'업데이트 완료']); exit;
     }
     if ($action === 'add_relation') {
@@ -56,11 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $t = (int)$t;
             if($v !== $t) $conn->query("INSERT IGNORE INTO user_relations (viewer_id, target_id) VALUES ($v, $t)");
         }
+        smw_audit_log($conn, 'relation.create', 'user', $v, '관리자가 작업자 선택 범위를 일괄 연결했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'일괄 연결 완료']); exit;
     }
     if ($action === 'del_relation') {
         $v = (int)$_POST['viewer_id']; $t = (int)$_POST['target_id'];
         $conn->query("DELETE FROM user_relations WHERE viewer_id=$v AND target_id=$t");
+        smw_audit_log($conn, 'relation.delete', 'user', $v, '관리자가 작업자 선택 관계를 해제했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'해제 완료']); exit;
     }
     if ($action === 'add_template') {
@@ -69,16 +77,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $s2 = !empty($_POST['step2']) ? (int)$_POST['step2'] : "NULL";
         $s3 = !empty($_POST['step3']) ? (int)$_POST['step3'] : "NULL";
         $conn->query("INSERT INTO approval_templates (name, step1_id, step2_id, step3_id) VALUES ('$name', $s1, $s2, $s3)");
+        smw_audit_log($conn, 'approval_template.create', 'approval_template', (int)$conn->insert_id, '관리자가 결재선 템플릿을 추가했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'템플릿 추가 완료']); exit;
     }
     if ($action === 'del_template') {
         $tid = (int)$_POST['template_id'];
         $conn->query("DELETE FROM approval_templates WHERE id=$tid");
+        smw_audit_log($conn, 'approval_template.delete', 'approval_template', $tid, '관리자가 결재선 템플릿을 삭제했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'삭제 완료']); exit;
     }
     if ($action === 'save_global_settings') {
         $timeout = (int)$_POST['approval_timeout'];
         $conn->query("UPDATE site_settings SET setting_value='$timeout' WHERE setting_key='approval_timeout'");
+        smw_audit_log($conn, 'settings.update', 'site_settings', null, '관리자가 결재 대기 만료 기간을 변경했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'설정이 저장되었습니다.']); exit;
     }
     if ($action === 'save_portal_settings') {
@@ -113,6 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
         $stmt->close();
+        smw_audit_log($conn, 'settings.update', 'site_settings', null, '관리자가 그룹웨어 표시와 회의 기준을 변경했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'그룹웨어 및 주간회의 기준을 저장했습니다.']); exit;
     }
     if ($action === 'save_api_settings') {
@@ -140,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
         $stmt->close();
+        smw_audit_log($conn, 'api_settings.update', 'site_settings', null, '관리자가 외부 API 연결 설정을 변경했습니다.');
         echo json_encode(['success'=>true, 'msg'=>'API 설정이 안전하게 저장되었습니다.']); exit;
     }
 }

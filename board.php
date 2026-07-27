@@ -24,6 +24,7 @@ $category = isset($_GET['category']) ? $_GET['category'] : 'all';
 
 // 글 작성 및 수정 (HTML 코드로 통째로 저장하여 양식 완벽 보존)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
+    smw_verify_csrf();
     $board_type = $conn->real_escape_string($_POST['board_type']);
     $title = $conn->real_escape_string($_POST['title']);
     $content = $conn->real_escape_string($_POST['content']); // 에디터의 HTML 데이터
@@ -40,8 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_post'])) {
     }
 }
 
-if ($action === 'delete' && isset($_GET['id'])) {
-    $del_id = (int)$_GET['id'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_post'])) {
+    smw_verify_csrf();
+    $del_id = (int)($_POST['post_id'] ?? 0);
     if ($is_admin) {
         $conn->query("DELETE FROM boards WHERE id=$del_id");
     } else {
@@ -126,7 +128,12 @@ if ($action === 'delete' && isset($_GET['id'])) {
                 <?php if($is_author): ?>
                 <div class="flex gap-2">
                     <a href="?action=write&id=<?= $post['id'] ?>" class="bg-emerald-600 text-white font-bold px-4 py-2 rounded">수정</a>
-                    <a href="?action=delete&id=<?= $post['id'] ?>" onclick="return confirm('정말로 이 글을 삭제하시겠습니까?')" class="bg-red-600 text-white font-bold px-4 py-2 rounded">삭제</a>
+                    <form method="POST" onsubmit="return confirm('정말로 이 글을 삭제하시겠습니까?')">
+                        <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
+                        <input type="hidden" name="delete_post" value="1">
+                        <input type="hidden" name="post_id" value="<?= $post['id'] ?>">
+                        <button type="submit" class="bg-red-600 text-white font-bold px-4 py-2 rounded">삭제</button>
+                    </form>
                 </div>
                 <?php endif; ?>
             </div>
@@ -145,6 +152,7 @@ if ($action === 'delete' && isset($_GET['id'])) {
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 class="font-bold text-xl mb-4 border-b pb-2"><?= $edit_id > 0 ? '게시글 수정' : '새 게시글 작성' ?></h2>
             <form method="POST" id="postForm">
+                <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
                 <input type="hidden" name="submit_post" value="1">
                 <input type="hidden" name="post_id" value="<?= $edit_id ?>">
                 
@@ -195,6 +203,7 @@ if ($action === 'delete' && isset($_GET['id'])) {
                     addImageBlobHook: async (blob, callback) => {
                         const fd = new FormData();
                         fd.append('file', blob);
+                        fd.append('smw_csrf', <?= json_encode(smw_csrf_token()) ?>);
                         try {
                             const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json());
                             if(res.success) {

@@ -25,6 +25,7 @@ if ($redraft_id > 0) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    smw_verify_csrf();
     $doc_type = $conn->real_escape_string($_POST['doc_type']);
     $title = $conn->real_escape_string($_POST['title']);
     $content = $conn->real_escape_string($_POST['content']); 
@@ -54,25 +55,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($_FILES['attachments']['name'][0])) {
                 $upload_dir = 'uploads/documents/';
                 if (!is_dir($upload_dir)) @mkdir($upload_dir, 0777, true);
+                $skipped_files = 0;
 
                 $file_count = count($_FILES['attachments']['name']);
                 for ($i = 0; $i < $file_count; $i++) {
-                    $tmp_name = $_FILES['attachments']['tmp_name'][$i];
                     $org_name = $_FILES['attachments']['name'][$i];
                     $file_size = $_FILES['attachments']['size'][$i];
-                    $ext = strtolower(pathinfo($org_name, PATHINFO_EXTENSION));
-                    
-                    $new_name = time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+                    $file = [
+                        'name' => $org_name,
+                        'tmp_name' => $_FILES['attachments']['tmp_name'][$i],
+                        'size' => $file_size,
+                        'error' => $_FILES['attachments']['error'][$i],
+                    ];
+                    [$valid, , $ext] = smw_validate_upload($file);
+                    if (!$valid) {
+                        $skipped_files++;
+                        continue;
+                    }
+                    $new_name = smw_safe_upload_name($ext);
                     $dest_path = $upload_dir . $new_name;
 
-                    if (move_uploaded_file($tmp_name, $dest_path)) {
+                    if (move_uploaded_file($file['tmp_name'], $dest_path)) {
                         $file_stmt = $conn->prepare("INSERT INTO attachments (reference_type, reference_id, original_name, file_path, file_size) VALUES ('document', ?, ?, ?, ?)");
                         $file_stmt->bind_param("issi", $doc_id, $org_name, $dest_path, $file_size);
                         $file_stmt->execute();
                     }
                 }
             }
-            echo "<script>alert('결재 문서가 상신되었습니다.'); location.href='approval_list.php';</script>";
+            $upload_notice = !empty($skipped_files) ? " 허용되지 않거나 용량을 초과한 첨부파일 {$skipped_files}개는 제외했습니다." : '';
+            echo "<script>alert(" . json_encode('결재 문서가 상신되었습니다.' . $upload_notice, JSON_UNESCAPED_UNICODE) . "); location.href='approval_list.php';</script>";
             exit;
         }
     } else { echo "<script>alert('유효하지 않은 결재선 템플릿입니다.');</script>"; }
@@ -96,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" id="draftForm" enctype="multipart/form-data" class="space-y-5">
+                <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
                 <input type="hidden" name="content" id="real_content">
                 <div class="flex gap-4">
                     <div class="w-1/3">
@@ -141,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const initVal = document.getElementById('hidden_init_val').value;
         const editor = new toastui.Editor({
             el: document.querySelector('#editor'), height: '400px', initialEditType: 'wysiwyg', previewStyle: 'vertical',
-            hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } }
+            hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); fd.append('smw_csrf', <?= json_encode(smw_csrf_token()) ?>); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } }
         });
         
         // 재기안 시 에디터에 기존 HTML을 붓습니다

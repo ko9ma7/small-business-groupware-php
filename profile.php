@@ -10,6 +10,7 @@ $uid = (int)$_SESSION['uid'];
 
 // 정보 수정 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    smw_verify_csrf();
     $phone = $conn->real_escape_string($_POST['phone']);
     $email = $conn->real_escape_string($_POST['email']);
     $birth_type = $conn->real_escape_string($_POST['birth_type']);
@@ -18,17 +19,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 비밀번호 변경이 입력된 경우에만 쿼리 추가
     $pw_query = "";
     if (!empty($_POST['new_password'])) {
+        $password_error = smw_password_error((string)$_POST['new_password']);
+        if ($password_error !== '') {
+            $message = $password_error;
+        } else {
         $hashed_pw = password_hash($_POST['new_password'], PASSWORD_DEFAULT);
         $pw_query = ", password = '$hashed_pw'";
+        }
     }
 
-    $sql = "UPDATE users SET phone='$phone', email='$email', birth_type='$birth_type', birth_date=$birth_date $pw_query WHERE id=$uid";
+    if (!isset($message)) {
+        $sql = "UPDATE users SET phone='$phone', email='$email', birth_type='$birth_type', birth_date=$birth_date $pw_query WHERE id=$uid";
     
-    if ($conn->query($sql)) {
-        echo "<script>alert('내 정보가 성공적으로 수정되었습니다.'); location.href='index.php';</script>";
-        exit;
-    } else {
-        $message = "저장 중 오류가 발생했습니다: " . $conn->error;
+        if ($conn->query($sql)) {
+            smw_audit_log($conn, 'profile.update', 'user', $uid, '사용자가 내 정보 또는 비밀번호를 변경했습니다.');
+            echo "<script>alert('내 정보가 성공적으로 수정되었습니다.'); location.href='index.php';</script>";
+            exit;
+        } else {
+            $message = "저장 중 오류가 발생했습니다.";
+        }
     }
 }
 
@@ -67,6 +76,7 @@ $u_info = $conn->query("SELECT * FROM users WHERE id = $uid")->fetch_assoc();
             </div>
 
             <form method="POST" class="space-y-5">
+                <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">휴대전화 (주소록 연동)</label>
                     <input type="text" name="phone" value="<?= htmlspecialchars($u_info['phone'] ?? '') ?>" placeholder="010-0000-0000" class="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-teal-500 transition">
@@ -93,7 +103,8 @@ $u_info = $conn->query("SELECT * FROM users WHERE id = $uid")->fetch_assoc();
 
                 <div class="pt-4 border-t border-gray-200 mt-6">
                     <label class="block text-sm font-bold text-red-600 mb-1">새 비밀번호 (변경 시에만 입력)</label>
-                    <input type="password" name="new_password" placeholder="비워두시면 기존 비밀번호가 유지됩니다." class="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-red-300 transition bg-red-50">
+                    <input type="password" name="new_password" autocomplete="new-password" minlength="8" aria-describedby="profile_password_help" placeholder="비워두시면 기존 비밀번호가 유지됩니다." class="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-red-300 transition bg-red-50">
+                    <p id="profile_password_help" class="mt-1 text-xs text-gray-500">변경할 때는 8자 이상, 영문과 숫자를 각각 하나 이상 포함하세요.</p>
                 </div>
                 
                 <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg shadow-md transition text-lg mt-6">

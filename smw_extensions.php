@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/report_periods.php';
+require_once __DIR__ . '/security.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
@@ -12,22 +13,6 @@ if (!isset($conn) || !($conn instanceof mysqli)) {
 function smw_h($value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
-}
-
-function smw_csrf_token(): string
-{
-    if (empty($_SESSION['smw_csrf'])) {
-        $_SESSION['smw_csrf'] = bin2hex(random_bytes(24));
-    }
-    return $_SESSION['smw_csrf'];
-}
-
-function smw_verify_csrf(): void
-{
-    if (!hash_equals(smw_csrf_token(), (string)($_POST['smw_csrf'] ?? ''))) {
-        http_response_code(419);
-        exit('요청이 만료되었습니다. 새로고침 후 다시 시도해 주세요.');
-    }
 }
 
 function smw_ensure_extension_schema(mysqli $conn): bool
@@ -83,6 +68,28 @@ function smw_ensure_extension_schema(mysqli $conn): bool
         "CREATE TABLE IF NOT EXISTS site_settings (
             setting_key VARCHAR(50) PRIMARY KEY,
             setting_value VARCHAR(255) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS login_attempts (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(80) NOT NULL,
+            ip_hash CHAR(64) NOT NULL,
+            was_success TINYINT(1) NOT NULL DEFAULT 0,
+            attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_login_username_time (username, attempted_at),
+            KEY idx_login_ip_time (ip_hash, attempted_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS audit_logs (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            actor_user_id INT NULL,
+            action VARCHAR(50) NOT NULL,
+            target_type VARCHAR(50) NOT NULL,
+            target_id INT NULL,
+            summary VARCHAR(500) NOT NULL,
+            ip_hash CHAR(64) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_audit_created (created_at),
+            KEY idx_audit_actor (actor_user_id, created_at),
+            KEY idx_audit_target (target_type, target_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 

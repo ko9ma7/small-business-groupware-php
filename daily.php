@@ -181,14 +181,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if (!is_dir($upload_dir)) @mkdir($upload_dir, 0777, true);
             $file_count = count($_FILES['attachments']['name']);
             for ($i = 0; $i < $file_count; $i++) {
-                $tmp_name = $_FILES['attachments']['tmp_name'][$i];
                 $org_name = $_FILES['attachments']['name'][$i];
                 $file_size = $_FILES['attachments']['size'][$i];
-                $ext = strtolower(pathinfo($org_name, PATHINFO_EXTENSION));
-                $new_name = time() . '_' . mt_rand(1000, 9999) . '.' . $ext;
+                $file = [
+                    'name' => $org_name,
+                    'tmp_name' => $_FILES['attachments']['tmp_name'][$i],
+                    'size' => $file_size,
+                    'error' => $_FILES['attachments']['error'][$i],
+                ];
+                [$valid, $validationMessage, $ext] = smw_validate_upload($file);
+                if (!$valid) {
+                    $msg_text .= " 첨부파일 1개는 제외되었습니다: {$validationMessage}";
+                    continue;
+                }
+                $new_name = smw_safe_upload_name($ext);
                 $dest_path = $upload_dir . $new_name;
 
-                if (move_uploaded_file($tmp_name, $dest_path)) {
+                if (move_uploaded_file($file['tmp_name'], $dest_path)) {
                     foreach($inserted_ids as $tid) {
                         $file_stmt = $conn->prepare("INSERT INTO attachments (reference_type, reference_id, original_name, file_path, file_size) VALUES ('task', ?, ?, ?, ?)");
                         $file_stmt->bind_param("issi", $tid, $org_name, $dest_path, $file_size);
@@ -425,7 +434,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         const csrfToken = '<?= smw_h(smw_csrf_token()) ?>';
         const entryStorageKey = 'smw_daily_entry_<?= $user_id ?>';
 
-        const editor = new toastui.Editor({ el: document.querySelector('#editor'), height: '260px', initialEditType: 'wysiwyg', previewStyle: 'vertical', hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } } });
+        const editor = new toastui.Editor({ el: document.querySelector('#editor'), height: '260px', initialEditType: 'wysiwyg', previewStyle: 'vertical', hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); fd.append('smw_csrf', <?= json_encode(smw_csrf_token()) ?>); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } } });
 
         setTimeout(() => {
             document.querySelectorAll('#editor [contenteditable="true"], #editor textarea').forEach(el => {
@@ -620,7 +629,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                     height: '200px',
                     initialEditType: 'wysiwyg',
                     toolbarItems: [['bold', 'italic', 'strike'], ['image', 'link']],
-                    hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } }
+                    hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); fd.append('smw_csrf', <?= json_encode(smw_csrf_token()) ?>); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } }
                 });
             }
             window.cEditor.setHTML('');

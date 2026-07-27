@@ -3,6 +3,7 @@
 session_start();
 error_reporting(0); ini_set('display_errors', 0);
 include 'db_conn.php';
+require_once 'smw_extensions.php';
 
 if (!isset($_SESSION['uid'])) { header("Location: login.php"); exit; }
 $my_uid = (int)$_SESSION['uid'];
@@ -32,7 +33,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'export') {
 // --- [ACTION 2] JSON 불러오기 및 반영 (Import) ---
 $import_msg = "";
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'import') {
+    smw_verify_csrf();
     if (!empty($_FILES['json_file']['tmp_name'])) {
+        [$validJsonUpload, $jsonUploadMessage] = smw_validate_upload($_FILES['json_file'], 'json');
+        if (!$validJsonUpload) {
+            $import_msg = $jsonUploadMessage;
+        } else {
         $json_data = file_get_contents($_FILES['json_file']['tmp_name']);
         $tasks = json_decode($json_data, true);
         $target_user = (int)$_POST['target_user_id'];
@@ -67,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 if ($stmt->execute()) $success_count++;
             }
             $import_msg = "✅ 총 {$success_count}건의 업무 데이터가 반영되었습니다. (기존 데이터 수정 및 신규 복사 포함)";
+        }
         }
     }
 }
@@ -141,6 +148,7 @@ if($is_admin == 1) {
             
             <form action="task_json_manager.php" method="POST" enctype="multipart/form-data" class="space-y-4">
                 <input type="hidden" name="action" value="import">
+                <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
                 <div class="flex gap-4 items-center mb-2">
                     <div class="w-1/3">
                         <label class="block text-xs font-bold text-gray-600 mb-1">데이터를 넣어줄 계정 (반영 대상)</label>

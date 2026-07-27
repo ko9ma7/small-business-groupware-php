@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->bind_param('sss', $code, $name, $color);
             $stmt->execute();
+            smw_audit_log($conn, 'company.save', 'company', (int)$stmt->insert_id ?: null, "회사 설정을 저장했습니다: {$name}");
             $_SESSION['org_message'] = ['success', '회사를 저장했습니다. 회사 수는 계속 추가할 수 있습니다.'];
         }
         header('Location: organization_admin.php?tab=companies');
@@ -55,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->bind_param('isi', $company_id, $name, $parent_id);
             $stmt->execute();
+            smw_audit_log($conn, 'department.save', 'department', (int)$stmt->insert_id ?: null, "사업부 설정을 저장했습니다: {$name}");
             $_SESSION['org_message'] = ['success', '사업부를 저장했습니다. 같은 회사에 사업부를 계속 추가할 수 있습니다.'];
         }
         header('Location: organization_admin.php?tab=departments');
@@ -86,6 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->bind_param('iiii', $target_user_id, $company_id, $department_id, $is_primary);
             $stmt->execute();
+            smw_audit_log($conn, 'organization.assign', 'user', $target_user_id, '직원의 회사·사업부 소속을 저장했습니다.');
             $_SESSION['org_message'] = ['success', '직원의 회사·사업부 소속을 저장했습니다.'];
         }
         header('Location: organization_admin.php?tab=people');
@@ -98,6 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("DELETE FROM user_org_assignments WHERE user_id=? AND company_id=?");
         $stmt->bind_param('ii', $target_user_id, $company_id);
         $stmt->execute();
+        smw_audit_log($conn, 'organization.unassign', 'user', $target_user_id, '직원의 회사 소속을 해제했습니다.');
         $_SESSION['org_message'] = ['success', '소속만 해제했습니다. 계정과 기존 보고 데이터는 유지됩니다.'];
         header('Location: organization_admin.php?tab=people');
         exit;
@@ -112,6 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("INSERT IGNORE INTO user_relations (viewer_id, target_id) VALUES (?, ?)");
             $stmt->bind_param('ii', $manager_id, $target_id);
             $stmt->execute();
+            smw_audit_log($conn, 'relation.create', 'user', $manager_id, '작업자 선택 관계를 연결했습니다.');
             $_SESSION['org_message'] = ['success', '작성자가 본문에서 선택할 작업자를 연결했습니다.'];
         }
         header('Location: organization_admin.php?tab=relations');
@@ -124,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("DELETE FROM user_relations WHERE viewer_id=? AND target_id=?");
         $stmt->bind_param('ii', $manager_id, $target_id);
         $stmt->execute();
+        smw_audit_log($conn, 'relation.delete', 'user', $manager_id, '작업자 선택 관계를 해제했습니다.');
         $_SESSION['org_message'] = ['success', '작업자 선택 연결을 해제했습니다. 기존 보고 데이터는 유지됩니다.'];
         header('Location: organization_admin.php?tab=relations');
         exit;
@@ -140,6 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("INSERT INTO approval_templates (name, step1_id, step2_id, step3_id) VALUES (?, ?, ?, ?)");
             $stmt->bind_param('siii', $name, $step1, $step2, $step3);
             $stmt->execute();
+            smw_audit_log($conn, 'approval_template.create', 'approval_template', (int)$stmt->insert_id, "결재선을 저장했습니다: {$name}");
             $_SESSION['org_message'] = ['success', '교차 회사 결재선을 저장했습니다.'];
         }
         header('Location: organization_admin.php?tab=approvals');

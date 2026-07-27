@@ -12,6 +12,7 @@ $doc_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if ($doc_id === 0) die("<script>alert('잘못된 접근입니다.'); location.href='index.php';</script>");
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    smw_verify_csrf();
     $action = $_POST['action']; 
     $comment = $conn->real_escape_string($_POST['comment']);
     $approval_id = intval($_POST['approval_id']);
@@ -144,6 +145,7 @@ foreach ($approvals as $app) {
             <div class="no-print bg-amber-50 border-2 border-amber-300 p-5 rounded mt-8">
                 <h3 class="font-bold text-amber-800 mb-3"><i class="fa-solid fa-pen mr-1"></i> 나의 결재 처리</h3>
                 <form method="POST">
+                    <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
                     <input type="hidden" name="approval_id" value="<?= $my_approval_id ?>">
                     <textarea name="comment" placeholder="승인 또는 반려 사유를 남겨주세요." required class="w-full p-3 border border-amber-300 rounded focus:ring-2 focus:ring-amber-500 mb-3 text-sm resize-none h-20 bg-white"></textarea>
                     <div class="flex flex-col sm:flex-row justify-between items-center gap-3">

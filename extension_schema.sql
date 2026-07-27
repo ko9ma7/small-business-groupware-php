@@ -16,6 +16,30 @@ INSERT IGNORE INTO site_settings (setting_key, setting_value) VALUES
     ('gemini_api_key', ''),
     ('gemini_model', 'gemini-2.5-flash');
 
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(80) NOT NULL,
+    ip_hash CHAR(64) NOT NULL,
+    was_success TINYINT(1) NOT NULL DEFAULT 0,
+    attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_login_username_time (username, attempted_at),
+    KEY idx_login_ip_time (ip_hash, attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    actor_user_id INT NULL,
+    action VARCHAR(50) NOT NULL,
+    target_type VARCHAR(50) NOT NULL,
+    target_id INT NULL,
+    summary VARCHAR(500) NOT NULL,
+    ip_hash CHAR(64) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_audit_created (created_at),
+    KEY idx_audit_actor (actor_user_id, created_at),
+    KEY idx_audit_target (target_type, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS companies (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(20) NOT NULL UNIQUE,

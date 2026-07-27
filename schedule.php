@@ -11,8 +11,17 @@ $my_position = $u_info['position'] ?? '사원';
 $is_admin = $u_info['is_admin'] == 1 || $my_position === '사장';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $title = $conn->real_escape_string($_POST['title']);
-    $start_date = $conn->real_escape_string($_POST['start_date']);
+    smw_verify_csrf();
+
+    if (isset($_POST['delete_schedule'])) {
+        $del_id = (int)($_POST['schedule_id'] ?? 0);
+        $auth_check = $is_admin ? "" : "AND author_id=$uid";
+        $conn->query("DELETE FROM schedules WHERE id=$del_id $auth_check");
+        echo "<script>alert('일정이 삭제되었습니다.'); location.href='schedule.php';</script>"; exit;
+    }
+
+    $title = $conn->real_escape_string($_POST['title'] ?? '');
+    $start_date = $conn->real_escape_string($_POST['start_date'] ?? '');
     $end_date = !empty($_POST['end_date']) ? $conn->real_escape_string($_POST['end_date']) : $start_date;
     
     // 수정 로직
@@ -27,13 +36,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->query("INSERT INTO schedules (title, start_date, end_date, author_id) VALUES ('$title', '$start_date', '$end_date', $uid)");
         echo "<script>alert('사내 일정이 등록되었습니다.'); location.href='schedule.php';</script>"; exit;
     }
-}
-
-if (isset($_GET['del_id'])) {
-    $del_id = (int)$_GET['del_id'];
-    $auth_check = $is_admin ? "" : "AND author_id=$uid";
-    $conn->query("DELETE FROM schedules WHERE id=$del_id $auth_check");
-    echo "<script>alert('일정이 삭제되었습니다.'); location.href='schedule.php';</script>"; exit;
 }
 
 $current_date = date('Y-m-d');
@@ -57,6 +59,7 @@ $schedules = $conn->query("SELECT s.*, u.nickname FROM schedules s JOIN users u 
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24">
                 <h2 class="font-bold text-lg mb-4 border-b pb-2 text-blue-800">📌 새 일정 등록</h2>
                 <form method="POST" class="space-y-4">
+                    <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
                     <input type="hidden" name="add_schedule" value="1">
                     <div><label class="block text-sm font-bold mb-1">일정 내용</label><input type="text" name="title" required class="w-full p-2 border rounded"></div>
                     <div><label class="block text-sm font-bold mb-1">시작일</label><input type="date" name="start_date" value="<?= date('Y-m-d') ?>" required class="w-full p-2 border rounded"></div>
@@ -83,7 +86,12 @@ $schedules = $conn->query("SELECT s.*, u.nickname FROM schedules s JOIN users u 
                             <td class="px-4 py-3 text-center">
                                 <?php if($s['author_id'] == $uid || $is_admin): ?>
                                 <button onclick='openEdit(<?= json_encode($s) ?>)' class="text-white bg-indigo-500 px-2 py-1 rounded text-xs mb-1">수정</button>
-                                <a href="?del_id=<?= $s['id'] ?>" onclick="return confirm('일정을 삭제하시겠습니까?')" class="text-white bg-red-500 px-2 py-1 rounded text-xs">삭제</a>
+                                <form method="POST" class="inline" onsubmit="return confirm('일정을 삭제하시겠습니까?')">
+                                    <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
+                                    <input type="hidden" name="delete_schedule" value="1">
+                                    <input type="hidden" name="schedule_id" value="<?= $s['id'] ?>">
+                                    <button type="submit" class="text-white bg-red-500 px-2 py-1 rounded text-xs">삭제</button>
+                                </form>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -98,6 +106,7 @@ $schedules = $conn->query("SELECT s.*, u.nickname FROM schedules s JOIN users u 
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
             <h3 class="text-lg font-bold mb-4 border-b pb-2">✏️ 일정 수정</h3>
             <form method="POST" class="space-y-4">
+                <input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>">
                 <input type="hidden" name="edit_schedule" value="1">
                 <input type="hidden" name="schedule_id" id="edit_id">
                 <div><label class="block text-sm font-bold mb-1">일정 내용</label><input type="text" id="edit_title" name="title" required class="w-full p-2 border rounded"></div>
