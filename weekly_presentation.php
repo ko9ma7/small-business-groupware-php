@@ -4,9 +4,10 @@ error_reporting(0); ini_set('display_errors', 0);
 include 'db_conn.php';
 if (!isset($_SESSION['uid'])) { header("Location: login.php"); exit; }
 require_once 'smw_extensions.php';
+require_once 'groupware_shell.php';
 
 $uid = (int)$_SESSION['uid'];
-$u_info_res = @$conn->query("SELECT position FROM users WHERE id = $uid");
+$u_info_res = @$conn->query("SELECT nickname, position, is_admin FROM users WHERE id = $uid");
 $u_info = $u_info_res ? $u_info_res->fetch_assoc() : array();
 $my_position = isset($u_info['position']) ? $u_info['position'] : '사원';
 
@@ -118,18 +119,19 @@ if($result) {
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8"><title>주간 업무 보고 - <?= smw_h($portal_identity['name']) ?></title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>주간 업무 보고 - <?= smw_h($portal_identity['name']) ?></title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
+<link rel="stylesheet" href="assets/groupware-shell.css?v=3">
 <style>
     * { box-sizing: border-box; }
-    body { background-color: #334155; margin: 0; font-family: 'Malgun Gothic', sans-serif; overflow: hidden; display: flex; justify-content: center; align-items: center;}
+    body { background-color: #334155; margin: 0; font-family: 'Malgun Gothic', sans-serif; overflow: hidden; }
     
-    .controls { position: fixed; top: 0; left: 0; width: 100%; height: 60px; background-color: #0f172a; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+    .controls { position: fixed; top: 64px; left: 0; width: 100%; height: 60px; background-color: #0f172a; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; z-index: 45; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
     .btn { background-color: #3b82f6; color: white; border: none; padding: 8px 16px; font-size: 13px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
     .btn:hover { background-color: #2563eb; }
     .btn-success { background-color: #10b981; } .btn-success:hover { background-color: #059669; }
@@ -141,7 +143,7 @@ if($result) {
     .date-nav input[type="date"] { padding: 4px 8px; border-radius: 4px; border: none; outline: none; font-weight: bold; font-family: 'Malgun Gothic'; font-size: 13px; cursor: pointer; }
     .weekly-menu-wrap{position:relative}.weekly-quick-menu{position:absolute;top:43px;left:0;display:grid;min-width:190px;padding:7px;border:1px solid #334155;border-radius:9px;background:#172033;box-shadow:0 14px 30px rgba(0,0,0,.35)}.weekly-quick-menu.hidden{display:none}.weekly-quick-menu a{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:7px;color:#dbe5f3;font-size:12px;font-weight:700}.weekly-quick-menu a:hover{background:#263650;color:#fff}.weekly-quick-menu i{width:16px;color:#75a7ff;text-align:center}
     
-    #slider-viewport { width: 100vw; height: calc(100vh - 60px); margin-top: 60px; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative; }
+    #slider-viewport { width: 100vw; height: calc(100vh - 124px); margin-top: 60px; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative; }
     #slider-wrapper { position: relative; width: 1600px; height: 900px; transform-origin: center center; background-color: transparent; }
     
     .slide-container { position: absolute; top: 0; left: 0; width: 1600px; height: 100%; background-color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.5); padding: 25px 35px; display: none; flex-direction: column; border-radius: 12px; overflow: hidden; }
@@ -182,6 +184,7 @@ if($result) {
     .slide-indicator { position: absolute; bottom: 15px; right: 30px; color: #64748b; font-size: 16px; font-weight: 900; }
     
     body.presentation-active { background-color: #000; } 
+    body.presentation-active .gw-topbar,
     body.presentation-active .controls { display: none !important; } 
     body.presentation-active #slider-viewport { margin-top: 0; height: 100vh; } 
     
@@ -189,25 +192,52 @@ if($result) {
 
     @media (max-width: 1024px) {
         body { overflow-y: auto; background-color: #f1f5f9; }
-        #slider-viewport { height: auto; overflow: visible; display: block; margin-top: 120px; padding: 15px; }
+        .gw-topbar { position: relative; }
+        #slider-viewport { height: auto; overflow: visible; display: block; margin-top: 0; padding: 12px; }
         #slider-wrapper { width: 100% !important; height: auto !important; transform: none !important; }
         
-        .slide-container { position: relative !important; display: flex !important; width: 100% !important; height: auto !important; padding: 20px !important; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 8px; }
+        .slide-container { position: relative !important; display: flex !important; width: 100% !important; height: auto !important; padding: 16px !important; margin-bottom: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 8px; }
         
         .content-wrap { flex-direction: column; height: auto !important; }
         .column { width: 100%; height: auto !important; overflow: visible !important; margin-bottom: 15px; }
         .column:empty { display: none; }
         
-        .controls { flex-wrap: wrap; height: auto; padding: 10px; }
-        .date-nav { width: 100%; justify-content: center; margin: 5px 0; }
+        .controls { position: sticky; top: 0; flex-wrap: nowrap; height: 58px; padding: 8px 10px; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none; }
+        .controls::-webkit-scrollbar { display: none; }
+        .controls > div { flex: 0 0 auto; }
+        .date-nav { width: auto; justify-content: center; margin: 0; }
+        .date-nav input[type="date"] { width: 132px; }
         
         .controls .btn-dark, .controls .btn-success { display: none; }
         .weekly-menu-wrap .btn-dark { display: flex; }
         .slide-indicator { display: none; }
+        .header { align-items: flex-start; gap: 8px; }
+        .header h1 { max-width: 100%; font-size: clamp(18px, 5vw, 24px); }
+        .header .date { font-size: 12px; text-align: right; }
+        .project-details { font-size: 14px; }
+    }
+
+    @media (max-width: 560px) {
+        .controls .btn { min-height: 40px; padding: 8px 11px; white-space: nowrap; }
+        .slide-container { padding: 12px !important; }
+        .header { flex-direction: column; }
+        .header .date { text-align: left; }
+        .column { padding: 10px; border-width: 1px; }
+        .project-name { font-size: 14px; }
+        .data-row { gap: 6px; }
+    }
+
+    @media print {
+        .gw-topbar, .controls, #loadingOverlay { display: none !important; }
+        body { background: #fff; overflow: visible; }
+        #slider-viewport { width: 100%; height: auto; margin: 0; overflow: visible; }
+        #slider-wrapper { width: 100% !important; height: auto !important; transform: none !important; }
+        .slide-container { position: relative !important; display: flex !important; width: 100% !important; height: 100vh !important; break-after: page; box-shadow: none; border-radius: 0; }
     }
 </style>
 </head>
 <body>
+<?php smw_render_shell_header('weekly', '주간 업무 보고', (int)($u_info['is_admin'] ?? 0) === 1, (string)($u_info['nickname'] ?? '')); ?>
 
 <div id="loadingOverlay">
     <i class="fa-solid fa-spinner fa-spin text-6xl mb-6 text-amber-400"></i>

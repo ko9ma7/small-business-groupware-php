@@ -168,7 +168,18 @@ $active_company_count = (int)($conn->query("SELECT COUNT(*) AS total FROM compan
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>시스템 관리 - <?= smw_h($portal_identity['name']) ?></title>
     <script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><link rel="stylesheet" href="assets/groupware-shell.css?v=2">
-    <style>body { font-family: Pretendard, 'Noto Sans KR', 'Malgun Gothic', sans-serif; }</style>
+    <style>
+        body { font-family: Pretendard, 'Noto Sans KR', 'Malgun Gothic', sans-serif; }
+        .admin-tabs { scrollbar-width: none; }
+        .admin-tabs::-webkit-scrollbar { display: none; }
+        @media (max-width: 640px) {
+            .admin-main { padding: 20px 12px 32px; }
+            .admin-tabs { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; }
+            .admin-tabs li { flex: 0 0 auto; margin-right: 0; scroll-snap-align: start; }
+            .admin-tabs .tab-btn { padding: 12px 10px; white-space: nowrap; }
+            .admin-card-head, .admin-card-body { padding-left: 16px; padding-right: 16px; }
+        }
+    </style>
     <script>
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -187,13 +198,13 @@ $active_company_count = (int)($conn->query("SELECT COUNT(*) AS total FROM compan
 </head>
 <body class="gw-body min-h-screen pb-10">
     <?php smw_render_shell_header('admin', '시스템 관리', true); ?>
-    <main class="max-w-7xl mx-auto px-4 py-8">
+    <main class="admin-main max-w-7xl mx-auto px-4 py-8">
         <div class="mb-6">
             <h1 class="text-2xl font-black text-slate-900">시스템 관리</h1>
             <p class="mt-1 text-sm text-slate-500">포털 표시, 보고 기준, 계정, 결재와 외부 연결을 한 곳에서 관리합니다.</p>
         </div>
         <div class="text-sm font-medium text-center text-gray-500 border-b border-gray-200 mb-6">
-            <ul class="flex flex-wrap -mb-px" role="tablist" aria-label="시스템 관리 항목">
+            <ul class="admin-tabs flex flex-wrap -mb-px" role="tablist" aria-label="시스템 관리 항목">
                 <li class="mr-2"><button id="btn-tab-portal" role="tab" aria-selected="true" aria-controls="tab-portal" onclick="switchTab('tab-portal')" class="tab-btn inline-block p-4 border-b-2 border-blue-600 text-blue-600">그룹웨어 설정</button></li>
                 <li class="mr-2"><button id="btn-tab-users" role="tab" aria-selected="false" aria-controls="tab-users" onclick="switchTab('tab-users')" class="tab-btn inline-block p-4 border-b-2 border-transparent">계정/주소록</button></li>
                 <li class="mr-2"><button id="btn-tab-relations" role="tab" aria-selected="false" aria-controls="tab-relations" onclick="switchTab('tab-relations')" class="tab-btn inline-block p-4 border-b-2 border-transparent">작업자 선택 범위</button></li>
@@ -206,16 +217,16 @@ $active_company_count = (int)($conn->query("SELECT COUNT(*) AS total FROM compan
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <form onsubmit="submitPortalSettings(event)" class="lg:col-span-2 bg-white rounded-xl shadow-lg overflow-hidden">
                     <input type="hidden" name="action" value="save_portal_settings">
-                    <div class="px-6 py-5 border-b bg-slate-50">
+                    <div class="admin-card-head px-6 py-5 border-b bg-slate-50">
                         <h2 class="text-lg font-black text-slate-900">그룹웨어 표시와 주간회의 기준</h2>
                         <p class="mt-1 text-sm text-slate-500">저장 즉시 로그인, 상단 메뉴, 대시보드, 주간 보고와 엑셀에 같은 기준이 적용됩니다.</p>
                     </div>
-                    <div class="p-6 space-y-7">
+                    <div class="admin-card-body p-6 space-y-7">
                         <section>
                             <h3 class="font-black text-slate-900 mb-4">포털 이름</h3>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label class="block text-sm font-bold mb-1" for="portal_name">그룹웨어 이름</label><input id="portal_name" name="portal_name" maxlength="80" required value="<?= smw_h($portal_settings['portal_name']) ?>" class="w-full border border-slate-300 p-3 rounded-lg" placeholder="예: 우리회사 GROUPWARE"><p class="mt-1 text-xs text-slate-500">모든 화면의 대표 이름으로 표시됩니다.</p></div>
-                                <div><label class="block text-sm font-bold mb-1" for="portal_company_label">회사 묶음 표기</label><input id="portal_company_label" name="portal_company_label" maxlength="160" value="<?= smw_h($portal_settings['portal_company_label']) ?>" class="w-full border border-slate-300 p-3 rounded-lg" placeholder="비우면 등록 회사 자동 표시"><p class="mt-1 text-xs text-slate-500">비워 두면 <?= smw_h($portal_identity['companies']) ?>처럼 자동 구성됩니다.</p></div>
+                                <div><label class="block text-sm font-bold mb-1" for="portal_company_label">상단 보조 문구 <span class="font-normal text-slate-400">(선택)</span></label><input id="portal_company_label" name="portal_company_label" maxlength="160" value="<?= smw_h($portal_settings['portal_company_label']) ?>" class="w-full border border-slate-300 p-3 rounded-lg" placeholder="예: 업무 포털"><p class="mt-1 text-xs text-slate-500">비워 두면 회사명 대신 일반 문구인 <b>업무 포털</b>만 표시됩니다. 등록 회사명은 자동 노출하지 않습니다.</p></div>
                             </div>
                         </section>
                         <section class="border-t pt-6">

@@ -233,17 +233,6 @@ function smw_portal_identity(mysqli $conn): array
 {
     $settings = smw_site_settings($conn);
     $companyLabel = trim($settings['portal_company_label']);
-    if ($companyLabel === '') {
-        $names = [];
-        $result = $conn->query("SELECT name FROM companies WHERE is_active=1 ORDER BY sort_order, name");
-        if ($result) {
-            while ($row = $result->fetch_assoc()) {
-                $name = trim((string)$row['name']);
-                if ($name !== '') $names[] = $name;
-            }
-        }
-        $companyLabel = implode(' / ', array_values(array_unique($names)));
-    }
 
     return [
         'name' => trim($settings['portal_name']) !== '' ? trim($settings['portal_name']) : 'GROUPWARE',

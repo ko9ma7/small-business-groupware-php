@@ -478,5 +478,62 @@ a {
     .ex-details-content {
         grid-template-columns: 1fr;
     }
-}
 
+    .ex-card-head,
+    .ex-card-body {
+        padding: 16px;
+    }
+
+    .ex-table-wrap {
+        overflow: visible;
+        padding: 10px;
+    }
+
+    .ex-table {
+        min-width: 0;
+    }
+
+    .ex-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+    }
+
+    .ex-table,
+    .ex-table tbody,
+    .ex-table tr,
+    .ex-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .ex-table tr {
+        margin-bottom: 10px;
+        padding: 8px 12px;
+        border: 1px solid var(--ex-line);
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .ex-table td {
+        display: grid;
+        grid-template-columns: minmax(92px, 36%) 1fr;
+        gap: 10px;
+        padding: 9px 0;
+        border-bottom: 1px solid #eef2f7;
+        overflow-wrap: anywhere;
+    }
+
+    .ex-table td:last-child {
+        border-bottom: 0;
+    }
+
+    .ex-table td::before {
+        content: attr(data-label);
+        color: var(--ex-muted);
+        font-size: 12px;
+        font-weight: 800;
+    }
+}
