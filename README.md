@@ -2,7 +2,8 @@
 
 별도 서버 프로그램이나 프레임워크 없이 PHP와 MySQL만으로 운영하는 소기업용 그룹웨어입니다. 일일 업무, 주간 회의 보고, 전자결재, 게시판, 일정, 주소록과 다회사 조직 관리를 한 사이트에서 제공합니다.
 
-운영 사례: [SM GROUPWARE](https://ko9ma.dothome.co.kr/smwww/index.php)
+운영 사례: [GROUPWARE](https://ko9ma.dothome.co.kr/smwww/index.php)
+예시 ID : test, pw : 1111
 
 ## 실제 사용 방식
 
