@@ -28,5 +28,13 @@ if ($technical['safe'] !== false || $knownTypo['safe'] !== true) {
     fwrite(STDERR, "spellcheck safety classification failed\n");
     exit(1);
 }
+$preset = smw_normalize_preset_payload([
+    'entry_mode' => 'team', 'worker_ids' => ['7', 7, 0, 11], 'weekday_mode' => 1,
+    'weekday_results' => ['1' => '김성근: 탱크 도면', '9' => '제외'], 'company_name' => '  프로젝트 A  '
+]);
+if ($preset['worker_ids'] !== [7, 11] || array_keys($preset['weekday_results']) !== [1] || $preset['company_name'] !== '프로젝트 A') {
+    fwrite(STDERR, "preset payload normalization failed\n");
+    exit(1);
+}
 
 echo "report helper checks passed\n";

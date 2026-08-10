@@ -15,6 +15,6 @@
 11. `감사 로그`를 열어 로그인과 관리자 설정 변경 기록이 남는지 확인합니다.
 12. 5MB 초과 이미지와 10MB 초과 일반 첨부파일은 새 버전에서 차단되므로 운영자에게 안내합니다.
 
-확장 테이블과 설정값은 페이지 접속 시 `CREATE TABLE IF NOT EXISTS`와 `INSERT IGNORE` 방식으로 추가됩니다. 로그인 실패 제한용 `login_attempts`와 관리자 변경 이력용 `audit_logs`도 자동 추가됩니다. 기존 행을 삭제하거나 회사명을 덮어쓰지 않습니다.
+확장 테이블과 설정값은 페이지 접속 시 `CREATE TABLE IF NOT EXISTS`와 `INSERT IGNORE` 방식으로 추가됩니다. 로그인 실패 제한용 `login_attempts`, 관리자 변경 이력용 `audit_logs`, 복원 가능한 업무 묶음 보관함용 `report_entry_presets`도 자동 추가됩니다. 기존 행을 삭제하거나 회사명을 덮어쓰지 않습니다.
 
 `install.sql`은 새 설치용입니다. 기존 운영 DB에는 원칙적으로 실행하지 않아도 됩니다. 자동 테이블 생성 권한이 없는 환경에서만 먼저 DB를 백업한 뒤 `extension_schema.sql`을 실행하세요.

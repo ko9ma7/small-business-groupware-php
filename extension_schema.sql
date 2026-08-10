@@ -91,3 +91,14 @@ CREATE TABLE IF NOT EXISTS report_task_meta (
     KEY idx_meta_creator (created_by, created_at),
     KEY idx_meta_period (period_start, period_end)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS report_entry_presets (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    preset_name VARCHAR(80) NOT NULL,
+    payload LONGTEXT NOT NULL,
+    deleted_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_report_preset_user (user_id, deleted_at, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -51,3 +51,23 @@ function smw_spellcheck_issue(string $original, string $revised, string $help, b
         'warning' => $safe ? '' : '영문·숫자·도면명 등 전문용어 가능성이 있어 자동 선택하지 않았습니다.',
     ];
 }
+
+function smw_normalize_preset_payload(array $payload): array
+{
+    $workerIds = array_values(array_unique(array_filter(array_map('intval', (array)($payload['worker_ids'] ?? [])))));
+    $weekdayResults = [];
+    foreach ((array)($payload['weekday_results'] ?? []) as $day => $value) {
+        $day = (int)$day;
+        if ($day >= 1 && $day <= 7) $weekdayResults[(string)$day] = mb_substr((string)$value, 0, 5000, 'UTF-8');
+    }
+    return [
+        'entry_mode' => ($payload['entry_mode'] ?? 'self') === 'team' ? 'team' : 'self',
+        'worker_ids' => array_slice($workerIds, 0, 200),
+        'weekday_mode' => !empty($payload['weekday_mode']),
+        'weekday_results' => $weekdayResults,
+        'company_name' => mb_substr(trim((string)($payload['company_name'] ?? '')), 0, 100, 'UTF-8'),
+        'task_category' => mb_substr(trim((string)($payload['task_category'] ?? '일반업무')), 0, 50, 'UTF-8'),
+        'plan_content' => mb_substr(trim((string)($payload['plan_content'] ?? '')), 0, 2000, 'UTF-8'),
+        'result_content' => mb_substr((string)($payload['result_content'] ?? ''), 0, 50000, 'UTF-8'),
+    ];
+}

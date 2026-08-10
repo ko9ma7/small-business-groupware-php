@@ -41,6 +41,7 @@ foreach ($schemaFiles as $schemaFile) {
     $schema = file_get_contents(__DIR__ . '/../' . $schemaFile);
     assert_same(strpos($schema, 'login_attempts') !== false, true, "$schemaFile 로그인 시도 테이블");
     assert_same(strpos($schema, 'audit_logs') !== false, true, "$schemaFile 감사 로그 테이블");
+    assert_same(strpos($schema, 'report_entry_presets') !== false, true, "$schemaFile 업무 묶음 보관함 테이블");
 }
 
 $csrfPages = ['approval_draft.php', 'approval_process.php', 'board.php', 'schedule.php'];
@@ -52,6 +53,11 @@ foreach ($csrfPages as $csrfPage) {
 assert_same(strpos(file_get_contents(__DIR__ . '/../board.php'), 'action=delete') !== false, false, '게시글 GET 삭제 차단');
 assert_same(strpos(file_get_contents(__DIR__ . '/../schedule.php'), '$_GET[\'del_id\']') !== false, false, '일정 GET 삭제 차단');
 assert_same(strpos(file_get_contents(__DIR__ . '/../upload_image.php'), 'smw_verify_csrf();') !== false, true, '이미지 업로드 CSRF 검증');
+$presetApi = file_get_contents(__DIR__ . '/../report_preset_api.php');
+assert_same(strpos($presetApi, 'smw_verify_csrf();') !== false, true, '업무 묶음 API CSRF 검증');
+assert_same(substr_count($presetApi, 'user_id=?') >= 3, true, '업무 묶음 사용자 소유권 제한');
+assert_same(strpos($presetApi, 'DELETE FROM report_entry_presets') !== false, false, '업무 묶음 영구 삭제 차단');
+assert_same(strpos($presetApi, 'deleted_at=NOW()') !== false, true, '업무 묶음 휴지통 이동');
 foreach (['approval_draft.php', 'board.php', 'daily.php', 'index.php'] as $uploadCaller) {
     $source = file_get_contents(__DIR__ . '/../' . $uploadCaller);
     assert_same(

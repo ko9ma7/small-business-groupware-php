@@ -298,7 +298,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>일일 업무 관리</title>
 <script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<link rel="stylesheet" href="assets/daily-work.css?v=3">
+<link rel="stylesheet" href="assets/daily-work.css?v=4">
 <link rel="stylesheet" href="assets/groupware-shell.css?v=2">
 <style>
     #toast { transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; }
@@ -315,9 +315,12 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             <div class="daily-entry-card bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-500 sticky top-20">
                 <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-200">
                     <h2 id="form-title" class="text-xl font-bold text-gray-800">✨ 신규 업무 등록</h2>
-                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition">
-                        <input type="checkbox" id="multi_day_check" onchange="toggleEndDate()" class="w-4 h-4 text-indigo-600"> 연속 일자 등록
-                    </label>
+                    <div class="daily-form-tools">
+                        <button type="button" onclick="openPresetLibrary()" class="daily-preset-button"><img src="assets/icons/work-bundle.svg" alt="">업무 묶음</button>
+                        <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition">
+                            <input type="checkbox" id="multi_day_check" onchange="toggleEndDate()" class="w-4 h-4 text-indigo-600"> 연속 일자 등록
+                        </label>
+                    </div>
                 </div>
                 
                 <form id="taskForm" onsubmit="submitForm(event)" enctype="multipart/form-data" class="space-y-4">
@@ -475,7 +478,22 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 </div>
             </div>
         </div>
-    </div>
+        </div>
+
+    <section id="presetLibraryModal" class="hidden daily-overlay" role="dialog" aria-modal="true" aria-labelledby="presetLibraryTitle">
+        <div class="daily-overlay-backdrop" onclick="closePresetLibrary()"></div>
+        <div class="daily-preset-dialog">
+            <header><div class="daily-preset-title"><img src="assets/icons/work-bundle.svg" alt=""><div><h3 id="presetLibraryTitle">업무 묶음 보관함</h3><p>작업자·업체·업무 내용 구성을 저장하고 다시 불러옵니다.</p></div></div><button type="button" onclick="closePresetLibrary()" aria-label="업무 묶음 보관함 닫기"><i class="fa-solid fa-xmark"></i></button></header>
+            <div class="daily-preset-save">
+                <label for="presetName">묶음 이름</label>
+                <div><input type="text" id="presetName" maxlength="80" placeholder="예: 월간 탱크 도면 작업"><button type="button" id="savePresetBtn" onclick="saveCurrentPreset()" class="daily-apply-button"><i class="fa-solid fa-box-archive mr-1"></i>현재 입력 저장</button></div>
+                <button type="button" id="newPresetBtn" onclick="startNewPreset()" class="hidden daily-link-button">새 묶음으로 저장하기</button>
+            </div>
+            <nav class="daily-preset-tabs" aria-label="업무 묶음 목록 구분"><button type="button" id="presetActiveTab" class="is-active" onclick="loadPresetList(false)">보관 목록</button><button type="button" id="presetTrashTab" onclick="loadPresetList(true)"><i class="fa-solid fa-trash-can mr-1"></i>휴지통</button></nav>
+            <div id="presetList" class="daily-preset-list" aria-live="polite"></div>
+            <footer><p><i class="fa-solid fa-shield-halved mr-1"></i>삭제해도 휴지통에 보관되며 복원할 수 있습니다.</p><button type="button" onclick="closePresetLibrary()" class="daily-secondary-button">닫기</button></footer>
+        </div>
+    </section>
 
     <div id="commentModal" class="fixed inset-0 bg-black bg-opacity-70 hidden flex justify-center items-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl flex flex-col h-[85vh] overflow-hidden">
@@ -494,6 +512,9 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         const submitBtn = document.getElementById('submitBtn');
         const csrfToken = '<?= smw_h(smw_csrf_token()) ?>';
         const entryStorageKey = 'smw_daily_entry_<?= $user_id ?>';
+        let presetItems = [];
+        let currentPresetId = 0;
+        let presetReturnFocus = null;
 
         const editor = new toastui.Editor({ el: document.querySelector('#editor'), height: '260px', initialEditType: 'wysiwyg', previewStyle: 'vertical', hooks: { addImageBlobHook: async (blob, callback) => { const fd = new FormData(); fd.append('file', blob); fd.append('smw_csrf', <?= json_encode(smw_csrf_token()) ?>); try { const res = await fetch('upload_image.php', {method:'POST', body:fd}).then(r=>r.json()); if(res.success) callback(res.url, 'Image'); } catch(e) {} } } });
 
@@ -532,6 +553,114 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 changed++;
             });
             showToast(changed ? '빈 요일 칸에 작업자 이름 틀을 넣었습니다.' : '이미 모든 요일에 내용이 있습니다.');
+        }
+
+        function currentPresetPayload() {
+            const weekdayResults = {};
+            document.querySelectorAll('textarea[name^="weekday_result"]').forEach(field => { weekdayResults[field.dataset.weekday] = field.value; });
+            return {
+                entry_mode: document.querySelector('input[name="entry_mode"]:checked')?.value || 'self',
+                worker_ids: selectedEmployees().map(item => Number(item.value)),
+                weekday_mode: document.getElementById('weekday_mode').checked,
+                weekday_results: weekdayResults,
+                company_name: document.getElementById('company_name').value,
+                task_category: document.getElementById('task_category').value,
+                plan_content: document.getElementById('plan_content').value,
+                result_content: editor.getHTML()
+            };
+        }
+
+        async function presetRequest(action, values = {}) {
+            const formData = new FormData(); formData.append('action', action); formData.append('smw_csrf', csrfToken);
+            Object.entries(values).forEach(([key, value]) => formData.append(key, value));
+            return fetch('report_preset_api.php', { method: 'POST', body: formData }).then(response => response.json());
+        }
+
+        function openPresetLibrary() {
+            presetReturnFocus = document.activeElement;
+            document.getElementById('presetLibraryModal').classList.remove('hidden');
+            document.body.classList.add('daily-modal-open');
+            loadPresetList(false);
+            setTimeout(() => document.getElementById('presetName').focus(), 50);
+        }
+
+        function closePresetLibrary() {
+            const modal = document.getElementById('presetLibraryModal');
+            if (modal.classList.contains('hidden')) return;
+            modal.classList.add('hidden');
+            if (document.getElementById('employeePickerModal').classList.contains('hidden') && document.getElementById('spellcheckPanel').classList.contains('hidden')) document.body.classList.remove('daily-modal-open');
+            if (presetReturnFocus instanceof HTMLElement) presetReturnFocus.focus();
+        }
+
+        function startNewPreset() {
+            currentPresetId = 0;
+            document.getElementById('presetName').value = '';
+            document.getElementById('savePresetBtn').innerHTML = '<i class="fa-solid fa-box-archive mr-1"></i>현재 입력 저장';
+            document.getElementById('newPresetBtn').classList.add('hidden');
+            document.getElementById('presetName').focus();
+        }
+
+        async function loadPresetList(includeDeleted) {
+            document.getElementById('presetActiveTab').classList.toggle('is-active', !includeDeleted);
+            document.getElementById('presetTrashTab').classList.toggle('is-active', includeDeleted);
+            const list = document.getElementById('presetList');
+            list.innerHTML = '<div class="daily-preset-empty"><i class="fa-solid fa-spinner fa-spin"></i> 불러오는 중</div>';
+            try {
+                const result = await presetRequest('list', { include_deleted: includeDeleted ? '1' : '' });
+                if (!result.success) throw new Error(result.message || '목록 오류');
+                presetItems = result.items || [];
+                if (!presetItems.length) {
+                    list.innerHTML = `<div class="daily-preset-empty"><i class="fa-solid ${includeDeleted ? 'fa-trash-arrow-up' : 'fa-layer-group'}"></i><strong>${includeDeleted ? '휴지통이 비어 있습니다.' : '저장된 업무 묶음이 없습니다.'}</strong><span>${includeDeleted ? '삭제한 묶음은 여기에 보관됩니다.' : '현재 입력 내용을 이름을 붙여 저장해 보세요.'}</span></div>`;
+                    return;
+                }
+                list.innerHTML = presetItems.map(item => {
+                    const payload = item.payload || {};
+                    const workerCount = Array.isArray(payload.worker_ids) ? payload.worker_ids.length : 0;
+                    return `<article class="daily-preset-item"><div class="daily-preset-item-icon"><img src="assets/icons/work-bundle.svg" alt=""></div><div class="daily-preset-item-body"><strong>${escapeHtml(item.preset_name)}</strong><p>${escapeHtml(payload.plan_content || '업무 요약 없음')}</p><div><span>${escapeHtml(payload.company_name || '업체 미지정')}</span><span>${workerCount ? `작업자 ${workerCount}명` : '내 업무'}</span>${payload.weekday_mode ? '<span>요일별</span>' : ''}</div></div><div class="daily-preset-actions">${includeDeleted ? `<button type="button" onclick="restorePreset(${Number(item.id)})" class="is-restore"><i class="fa-solid fa-trash-arrow-up"></i>복원</button>` : `<button type="button" onclick="applyPreset(${Number(item.id)})" class="is-load"><i class="fa-solid fa-arrow-down"></i>불러오기</button><button type="button" onclick="movePresetToTrash(${Number(item.id)})" class="is-delete" aria-label="${escapeHtml(item.preset_name)} 휴지통으로 이동"><i class="fa-solid fa-trash-can"></i></button>`}</div></article>`;
+                }).join('');
+            } catch (error) {
+                list.innerHTML = '<div class="daily-preset-empty is-error"><i class="fa-solid fa-circle-exclamation"></i>업무 묶음 목록을 불러오지 못했습니다.</div>';
+            }
+        }
+
+        async function saveCurrentPreset() {
+            const name = document.getElementById('presetName').value.trim();
+            if (!name) { showToast('업무 묶음 이름을 입력해 주세요.'); document.getElementById('presetName').focus(); return; }
+            try {
+                const result = await presetRequest('save', { preset_id: String(currentPresetId || ''), preset_name: name, payload: JSON.stringify(currentPresetPayload()) });
+                showToast(result.message || '저장 결과를 확인하지 못했습니다.');
+                if (result.success) { currentPresetId = Number(result.id); document.getElementById('savePresetBtn').innerHTML = '<i class="fa-solid fa-rotate mr-1"></i>현재 내용으로 갱신'; document.getElementById('newPresetBtn').classList.remove('hidden'); loadPresetList(false); }
+            } catch (error) { showToast('업무 묶음 저장 서버에 연결하지 못했습니다.'); }
+        }
+
+        function applyPreset(id) {
+            const item = presetItems.find(entry => Number(entry.id) === Number(id));
+            if (!item) return;
+            const payload = item.payload || {};
+            resetForm();
+            const modeInput = document.querySelector(`input[name="entry_mode"][value="${payload.entry_mode === 'team' ? 'team' : 'self'}"]`);
+            if (modeInput && !modeInput.disabled) modeInput.checked = true;
+            document.querySelectorAll('input[name="target_user_ids[]"]').forEach(input => { input.checked = (payload.worker_ids || []).map(Number).includes(Number(input.value)); });
+            document.getElementById('weekday_mode').checked = Boolean(payload.weekday_mode);
+            document.querySelectorAll('textarea[name^="weekday_result"]').forEach(field => { field.value = payload.weekday_results?.[field.dataset.weekday] || ''; });
+            document.getElementById('company_name').value = payload.company_name || '';
+            document.getElementById('task_category').value = payload.task_category || '일반업무';
+            document.getElementById('plan_content').value = payload.plan_content || '';
+            editor.setHTML(payload.result_content || '');
+            setEntryMode(modeInput?.value || 'self'); toggleWeekdayEntry(); updateEmployeeSelection();
+            currentPresetId = Number(item.id); document.getElementById('presetName').value = item.preset_name; document.getElementById('savePresetBtn').innerHTML = '<i class="fa-solid fa-rotate mr-1"></i>현재 내용으로 갱신'; document.getElementById('newPresetBtn').classList.remove('hidden');
+            closePresetLibrary(); showToast('업무 묶음을 불러왔습니다. 날짜를 확인한 뒤 등록하세요.');
+        }
+
+        async function movePresetToTrash(id) {
+            if (!confirm('이 업무 묶음을 휴지통으로 이동하시겠습니까? 나중에 복원할 수 있습니다.')) return;
+            try { const result = await presetRequest('delete', { preset_id: String(id) }); showToast(result.message || '처리 결과를 확인하지 못했습니다.'); if (result.success) { if (currentPresetId === Number(id)) startNewPreset(); loadPresetList(false); } }
+            catch (error) { showToast('휴지통 처리 서버에 연결하지 못했습니다.'); }
+        }
+
+        async function restorePreset(id) {
+            try { const result = await presetRequest('restore', { preset_id: String(id) }); showToast(result.message || '처리 결과를 확인하지 못했습니다.'); if (result.success) loadPresetList(true); }
+            catch (error) { showToast('복원 서버에 연결하지 못했습니다.'); }
         }
 
         function openEmployeePicker() { document.getElementById('employeePickerModal').classList.remove('hidden'); document.body.classList.add('daily-modal-open'); }
@@ -641,7 +770,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         
         function resetForm() { 
             const currentDate = document.getElementById('target_date').value; document.getElementById('taskForm').reset(); document.getElementById('task_id').value = ''; document.getElementById('source_task_id').value = ''; document.getElementById('target_date').value = currentDate; document.getElementById('task_category').value = '일반업무'; document.getElementById('multi_day_check').disabled = false; toggleEndDate(); toggleWeekdayEntry();
-            editor.setHTML(''); formTitle.innerHTML = '✨ 신규 업무 등록'; submitBtn.innerHTML = '등록 / 저장'; submitBtn.classList.replace('bg-emerald-600', 'bg-blue-600'); closeSpellcheck(); restoreEntryPreference();
+            editor.setHTML(''); formTitle.innerHTML = '✨ 신규 업무 등록'; submitBtn.innerHTML = '등록 / 저장'; submitBtn.classList.replace('bg-emerald-600', 'bg-blue-600'); closeSpellcheck(); startNewPreset(); restoreEntryPreference();
         }
         
         async function deleteTask(id) { if(!confirm('삭제하시겠습니까?')) return; const fd = new FormData(); fd.append('action', 'delete'); fd.append('task_id', id); fd.append('smw_csrf', csrfToken); const res = await fetch('daily.php', { method: 'POST', body: fd }).then(r => r.json()); showToast(res.msg); if(res.success) setTimeout(() => { location.reload(); }, 700); }
@@ -724,7 +853,16 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
 
         function closeSpellcheck() { document.getElementById('spellcheckPanel').classList.add('hidden'); if (document.getElementById('employeePickerModal').classList.contains('hidden')) document.body.classList.remove('daily-modal-open'); }
         function escapeHtml(value) { const div = document.createElement('div'); div.textContent = value || ''; return div.innerHTML; }
-        document.addEventListener('keydown', event => { if (event.key !== 'Escape') return; closeEmployeePicker(); closeSpellcheck(); });
+        document.addEventListener('keydown', event => {
+            const presetModal = document.getElementById('presetLibraryModal');
+            if (event.key === 'Escape') { closeEmployeePicker(); closeSpellcheck(); closePresetLibrary(); return; }
+            if (event.key !== 'Tab' || presetModal.classList.contains('hidden')) return;
+            const focusable = Array.from(presetModal.querySelectorAll('button:not([disabled]), input:not([disabled])')).filter(element => element.offsetParent !== null);
+            if (!focusable.length) return;
+            const first = focusable[0], last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        });
 
         let currentTaskId = ''; let currentCommentBtn = null;
         
