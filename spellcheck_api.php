@@ -3,6 +3,7 @@ session_start();
 header('Content-Type: application/json; charset=utf-8');
 require_once 'db_conn.php';
 require_once 'smw_extensions.php';
+require_once 'report_helpers.php';
 
 if (!isset($_SESSION['uid'])) {
     http_response_code(401);
@@ -87,7 +88,7 @@ function smw_local_spellcheck(string $text): array
     foreach ($rules as [$pattern, $replacement, $help]) {
         if (preg_match_all($pattern, $revised, $matches)) {
             foreach (array_unique($matches[0]) as $matched) {
-                $issues[] = ['original' => $matched, 'revised' => $replacement, 'help' => $help];
+                $issues[] = smw_spellcheck_issue($matched, $replacement, $help, true);
             }
             $revised = preg_replace($pattern, $replacement, $revised);
         }
@@ -111,7 +112,7 @@ function smw_bareun_issues(array $response): array
             $help = '';
             $helpId = (string)($block['revisions'][0]['help_id'] ?? '');
             if ($helpId !== '' && isset($helps[$helpId]['comment'])) $help = (string)$helps[$helpId]['comment'];
-            $issues[] = ['original' => $origin, 'revised' => $revised, 'help' => $help];
+            $issues[] = smw_spellcheck_issue($origin, $revised, $help);
         }
     };
     $walk((array)($response['revised_blocks'] ?? []));
@@ -166,7 +167,7 @@ if ($apiKey !== '' && function_exists('curl_init')) {
             'provider' => 'bareun',
             'provider_label' => '바른AI 정밀 검사',
             'is_fallback' => false,
-            'notice' => ($apiKeySource === 'admin' ? '관리자 API 설정에 저장된 바른AI로 ' : '바른AI로 ') . '맞춤법·띄어쓰기·표준어를 문맥 기반으로 검사했습니다.',
+            'notice' => ($apiKeySource === 'admin' ? '관리자 API 설정에 저장된 바른AI로 ' : '바른AI로 ') . '검사했습니다. 선택한 항목만 적용되며 문단·목록 형식은 유지됩니다.',
             'revised' => (string)$response['revised'],
             'issues' => smw_bareun_issues($response),
         ], JSON_UNESCAPED_UNICODE);

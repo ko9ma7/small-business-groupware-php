@@ -56,14 +56,16 @@
 .daily-spell-issue { padding: 9px 11px; border-left: 3px solid #dc2626; border-radius: 6px; background: #fff; color: #475569; font-size: 12px; }
 .daily-spell-issue del { color: #dc2626; font-weight: 800; }
 .daily-spell-issue ins { color: #08785b; font-weight: 800; text-decoration: none; }
-.daily-revised-text { width: 100%; min-height: 112px; margin-bottom: 10px; padding: 11px; border: 1px solid #d8dee8; border-radius: 8px; background: #fff; font-size: 13px; line-height: 1.6; resize: vertical; }
 .daily-apply-button { border: 1px solid #08785b; background: #08785b; color: #fff; }
 .daily-apply-button:hover { background: #06664d; }
 .daily-target-badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; background: #eef2ff; color: #4338ca; font-size: 10px; font-weight: 800; }
 .daily-editor-actions{display:flex;align-items:center;gap:7px}.daily-count-badge{display:grid;min-width:20px;height:20px;place-items:center;margin-left:3px;padding:0 5px;border-radius:999px;background:#e5edff;color:#2457d6;font-size:10px}
+.daily-weekday-section{padding:13px;border:1px solid #b9caef;border-radius:12px;background:#f6f9ff}.daily-weekday-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.daily-weekday-heading h3{margin:0;color:#1e3a6d;font-size:14px;font-weight:900}.daily-weekday-heading p{margin:3px 0 0;color:#64748b;font-size:11px}.daily-weekday-heading>label{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:#2457d6;font-size:12px;font-weight:800}.daily-weekday-heading input{width:17px;height:17px;accent-color:#2457d6}.daily-weekday-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.daily-weekday-grid label:last-child{grid-column:1/-1}.daily-weekday-grid span{display:block;margin-bottom:4px;color:#334155;font-size:11px;font-weight:900}.daily-weekday-grid textarea{width:100%;min-height:74px;padding:8px 10px;border:1px solid #cbd8ee;border-radius:8px;background:#fff;color:#172033;font-size:12px;line-height:1.45;resize:vertical}.daily-weekday-grid textarea:focus{outline:3px solid rgba(36,87,214,.14);border-color:#2457d6}.daily-weekday-help{margin:9px 0 0;color:#52637b;font-size:11px;line-height:1.45}
+.daily-spell-choice{display:flex;align-items:flex-start;gap:9px}.daily-spell-choice input{width:17px;height:17px;flex:0 0 auto;margin-top:1px;accent-color:#08785b}.daily-spell-issue.is-protected{border-left-color:#d97706;background:#fffaf0}.daily-spell-warning{margin-top:4px;color:#9a6700;font-size:11px;font-weight:700}
 
 @media (max-width: 640px) {
-    .daily-mode-grid, .daily-employee-grid { grid-template-columns: 1fr; }
+    .daily-mode-grid, .daily-employee-grid, .daily-weekday-grid { grid-template-columns: 1fr; }
+    .daily-weekday-grid label:last-child{grid-column:auto}.daily-weekday-heading{align-items:flex-start;flex-direction:column}
     .daily-mode-card { min-height: 68px; }
     .daily-editor-actions{width:100%}.daily-editor-actions>button{flex:1;padding:0 8px}.daily-overlay{padding:10px}.daily-picker-dialog,.daily-spell-panel{max-height:calc(100vh - 20px)}
 }

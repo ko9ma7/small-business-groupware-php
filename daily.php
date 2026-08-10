@@ -8,6 +8,7 @@ if (!isset($_SESSION['uid'])) { header("Location: login.php"); exit; }
 $user_id = (int)$_SESSION['uid'];
 require_once 'smw_extensions.php';
 require_once 'groupware_shell.php';
+require_once 'report_helpers.php';
 
 $current_user = smw_current_user($conn);
 if (!$current_user) { header("Location: logout.php"); exit; }
@@ -83,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if ($action === 'save') {
         $task_id = !empty($_POST['task_id']) ? (int)$_POST['task_id'] : 0;
+        $source_task_id = !empty($_POST['source_task_id']) ? (int)$_POST['source_task_id'] : 0;
         $entry_mode = ($_POST['entry_mode'] ?? 'self') === 'team' ? 'team' : 'self';
         $worker_user_ids = $entry_mode === 'team' ? array_map('intval', (array)($_POST['target_user_ids'] ?? [])) : [];
         $worker_user_ids = array_values(array_unique(array_diff(array_intersect($worker_user_ids, $selectable_ids), [$user_id])));
@@ -96,11 +98,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         
         $plan_content = trim($_POST['plan_content']); 
         $result_content = trim($_POST['result_content']); 
+        $weekday_mode = $entry_mode === 'team' && !empty($_POST['weekday_mode']);
+        $weekday_results = [];
+        foreach ((array)($_POST['weekday_result'] ?? []) as $weekday => $weekday_text) {
+            $weekday = (int)$weekday;
+            if ($weekday >= 1 && $weekday <= 7) $weekday_results[$weekday] = trim((string)$weekday_text);
+        }
         
         $result_content = preg_replace('/^(<p>(<br>|&nbsp;|\s)*<\/p>\s*)+/i', '', $result_content);
         $result_content = preg_replace('/(<p>(<br>|&nbsp;|\s)*<\/p>\s*)+$/i', '', $result_content);
 
-        if ($task_id === 0 && $entry_mode === 'team' && !empty($worker_user_ids)) {
+        if ($task_id === 0 && $entry_mode === 'team' && !$weekday_mode && !empty($worker_user_ids)) {
             $worker_names = [];
             foreach ($managed_users as $person) {
                 if (in_array((int)$person['id'], $worker_user_ids, true)) $worker_names[] = trim((string)$person['nickname']);
@@ -133,6 +141,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if($end < $start) $end = clone $start;
 
         $inserted_ids = array();
+        $skipped_count = 0;
+
+        if ($source_task_id > 0) {
+            $source_stmt = $conn->prepare(
+                "SELECT t.id FROM report_tasks t LEFT JOIN report_task_meta m ON m.task_id=t.id
+                 WHERE t.id=? AND (t.user_id=? OR m.created_by=?) LIMIT 1"
+            );
+            $source_stmt->bind_param('iii', $source_task_id, $user_id, $user_id);
+            $source_stmt->execute();
+            if ($source_stmt->get_result()->num_rows === 0) {
+                echo json_encode(['success' => false, 'msg' => '연장할 업무를 확인할 수 없습니다.']);
+                exit;
+            }
+        }
 
         if ($task_id > 0) {
             $auth_res = $conn->query(
@@ -157,8 +179,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $msg_text = "업무가 수정되었습니다.";
         } else {
             foreach (smw_registration_dates($start->format('Y-m-d'), $end->format('Y-m-d'), $include_saturday, $include_sunday) as $curr_date) {
+                $date_result_content = $result_content;
+                if ($weekday_mode) {
+                    $weekday = (int)date('N', strtotime($curr_date));
+                    $weekday_text = $weekday_results[$weekday] ?? '';
+                    if ($weekday_text === '') { $skipped_count++; continue; }
+                    $date_result_content = smw_weekday_result_html($weekday_text);
+                }
+                if ($source_task_id > 0) {
+                    $duplicate_stmt = $conn->prepare(
+                        "SELECT id FROM report_tasks WHERE user_id=? AND target_date=? AND company_name=? AND task_category=? AND plan_content=? LIMIT 1"
+                    );
+                    $duplicate_stmt->bind_param('issss', $user_id, $curr_date, $company_name, $task_category, $plan_content);
+                    $duplicate_stmt->execute();
+                    if ($duplicate_stmt->get_result()->num_rows > 0) { $skipped_count++; continue; }
+                }
                 $stmt = $conn->prepare("INSERT INTO report_tasks (user_id, target_date, company_name, task_category, plan_content, result_content, task_type) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt->bind_param("issssss", $user_id, $curr_date, $company_name, $task_category, $plan_content, $result_content, $task_type);
+                $stmt->bind_param("issssss", $user_id, $curr_date, $company_name, $task_category, $plan_content, $date_result_content, $task_type);
                 if($stmt->execute()) {
                     $new_id = (int)$stmt->insert_id;
                     $inserted_ids[] = $new_id;
@@ -167,11 +204,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $meta_stmt->execute();
                 }
             }
-            $msg_text = $entry_mode === 'team'
+            $msg_text = $source_task_id > 0
+                ? "기존 결과를 복제하지 않고 업무 기간을 " . count($inserted_ids) . "일 연장했습니다."
+                : ($entry_mode === 'team'
                 ? count($worker_user_ids) . "명의 작업자 구분을 포함해 내 업무 " . count($inserted_ids) . "건을 등록했습니다."
-                : "내 업무 " . count($inserted_ids) . "건을 등록했습니다.";
+                : "내 업무 " . count($inserted_ids) . "건을 등록했습니다.");
+            if ($skipped_count > 0) $msg_text .= " 중복 또는 내용 없는 요일 {$skipped_count}일은 제외했습니다.";
             if (empty($inserted_ids)) {
-                echo json_encode(['success' => false, 'msg' => '선택한 기간에 등록할 평일이 없습니다. 토요일 또는 일요일 포함을 선택해 주세요.']);
+                if ($source_task_id > 0 && $skipped_count > 0) {
+                    echo json_encode(['success' => true, 'msg' => '선택한 기간은 이미 등록되어 있어 중복 추가하지 않았습니다.']);
+                } elseif ($weekday_mode) {
+                    echo json_encode(['success' => false, 'msg' => '선택 기간의 요일에 입력된 작업 내용이 없습니다.']);
+                } else {
+                    echo json_encode(['success' => false, 'msg' => '선택한 기간에 등록할 평일이 없습니다. 토요일 또는 일요일 포함을 선택해 주세요.']);
+                }
                 exit;
             }
         }
@@ -252,7 +298,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>일일 업무 관리</title>
 <script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<link rel="stylesheet" href="assets/daily-work.css?v=2">
+<link rel="stylesheet" href="assets/daily-work.css?v=3">
 <link rel="stylesheet" href="assets/groupware-shell.css?v=2">
 <style>
     #toast { transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; }
@@ -275,7 +321,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 </div>
                 
                 <form id="taskForm" onsubmit="submitForm(event)" enctype="multipart/form-data" class="space-y-4">
-                    <input type="hidden" name="action" value="save"><input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>"><input type="hidden" id="task_id" name="task_id" value=""><input type="hidden" id="result_content" name="result_content" value="">
+                    <input type="hidden" name="action" value="save"><input type="hidden" name="smw_csrf" value="<?= smw_h(smw_csrf_token()) ?>"><input type="hidden" id="task_id" name="task_id" value=""><input type="hidden" id="source_task_id" name="source_task_id" value=""><input type="hidden" id="result_content" name="result_content" value="">
 
                     <fieldset>
                         <legend class="block font-bold text-gray-800 mb-2 text-sm">작성 방식</legend>
@@ -314,6 +360,22 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                             <footer><button type="button" onclick="closeEmployeePicker()" class="daily-secondary-button">취소</button><button type="button" onclick="insertSelectedNames(); closeEmployeePicker();" class="daily-apply-button"><i class="fa-solid fa-list-ul mr-1"></i>작업자 줄 넣기</button></footer>
                         </section>
                     </div>
+
+                    <section id="weekdayEntrySection" class="hidden daily-weekday-section" aria-labelledby="weekdayEntryTitle">
+                        <div class="daily-weekday-heading">
+                            <div><h3 id="weekdayEntryTitle">요일별 작업자 기록</h3><p>체크하면 연속 기간 중 내용이 있는 요일만 내 보고서로 저장됩니다.</p></div>
+                            <label><input type="checkbox" id="weekday_mode" name="weekday_mode" value="1" onchange="toggleWeekdayEntry()"> 요일별 입력 사용</label>
+                        </div>
+                        <div id="weekdayFields" class="hidden">
+                            <button type="button" onclick="fillWeekdayWorkerTemplates()" class="daily-secondary-button mb-3"><i class="fa-solid fa-user-plus mr-1"></i>빈 칸에 선택 작업자 틀 넣기</button>
+                            <div class="daily-weekday-grid">
+                                <?php foreach([1=>'월',2=>'화',3=>'수',4=>'목',5=>'금',6=>'토',7=>'일'] as $weekdayNumber=>$weekdayLabel): ?>
+                                    <label><span><?= $weekdayLabel ?>요일</span><textarea name="weekday_result[<?= $weekdayNumber ?>]" data-weekday="<?= $weekdayNumber ?>" rows="3" placeholder="예: 홍길동: 탱크 도면 작성"></textarea></label>
+                                <?php endforeach; ?>
+                            </div>
+                            <p class="daily-weekday-help">선택한 작업자의 계정에는 저장되지 않습니다. 작성자의 보고서 본문에만 ‘이름: 작업’으로 기록됩니다.</p>
+                        </div>
+                    </section>
                     
                     <div class="flex gap-4">
                         <div class="w-1/2"><label class="block font-bold text-blue-700 mb-1 text-sm">시작 일자</label><input type="date" id="target_date" name="target_date" value="<?= date('Y-m-d') ?>" class="w-full p-2 border border-blue-300 bg-blue-50 rounded" required></div>
@@ -357,8 +419,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                             <div class="daily-overlay-backdrop" onclick="closeSpellcheck()"></div>
                             <div class="daily-spell-panel"><div class="flex items-center justify-between gap-3"><h3 id="spellcheckTitle" class="font-bold text-slate-800">맞춤법·띄어쓰기 검사 결과</h3><span id="spellcheckProvider" class="daily-provider-badge"></span></div>
                             <p id="spellcheckNotice" class="daily-spell-notice"></p><div id="spellcheckIssues" class="daily-spell-issues"></div>
-                            <textarea id="spellcheckRevised" class="daily-revised-text" aria-label="교정된 문장"></textarea>
-                            <div class="flex justify-end gap-2"><button type="button" onclick="closeSpellcheck()" class="daily-secondary-button">닫기</button><button type="button" onclick="applySpellcheck()" class="daily-apply-button">교정문 적용</button></div></div>
+                            <div class="flex justify-end gap-2"><button type="button" onclick="closeSpellcheck()" class="daily-secondary-button">닫기</button><button type="button" id="applySpellcheckBtn" onclick="applySpellcheck()" class="daily-apply-button">선택 항목 적용</button></div></div>
                         </section>
                     </div>
                     <div><label class="block font-bold text-gray-700 mb-1 text-sm">증빙 자료 첨부</label><input type="file" name="attachments[]" multiple class="w-full p-1 border rounded bg-gray-50 text-xs"></div>
@@ -404,7 +465,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                                         <button type="button" onclick="editTask(this)" data-id="<?= $t['id'] ?>" data-date="<?= $t['target_date'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold"><i class="fa-solid fa-pen"></i></button>
                                         <button type="button" onclick="deleteTask(<?= $t['id'] ?>)" class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold"><i class="fa-solid fa-trash"></i></button>
                                     </div>
-                                    <button type="button" onclick="carryOverTask(this)" data-id="<?= $t['id'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="w-full bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold"><i class="fa-solid fa-copy"></i> 복사</button>
+                                    <button type="button" onclick="extendTask(this)" data-id="<?= $t['id'] ?>" data-date="<?= $t['target_date'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="w-full bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold"><i class="fa-solid fa-calendar-plus"></i> 기간 연장</button>
                                 </td>
                             </tr>
                             <textarea id="res_raw_<?= $t['id'] ?>" style="display:none;"><?= htmlspecialchars($t['result_content']) ?></textarea>
@@ -447,8 +508,30 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         function setEntryMode(mode) {
             const isTeam = mode === 'team';
             document.getElementById('employeePickerToolbar').classList.toggle('hidden', !isTeam);
+            document.getElementById('weekdayEntrySection').classList.toggle('hidden', !isTeam);
             if (!isTeam) closeEmployeePicker();
             saveEntryPreference();
+        }
+
+        function toggleWeekdayEntry() {
+            const enabled = document.getElementById('weekday_mode').checked;
+            document.getElementById('weekdayFields').classList.toggle('hidden', !enabled);
+            if (enabled && !document.getElementById('multi_day_check').checked) {
+                document.getElementById('multi_day_check').checked = true;
+                toggleEndDate();
+            }
+        }
+
+        function fillWeekdayWorkerTemplates() {
+            const names = selectedEmployees().map(item => item.dataset.name);
+            if (!names.length) { showToast('먼저 작업자를 선택해 주세요.'); openEmployeePicker(); return; }
+            let changed = 0;
+            document.querySelectorAll('textarea[name^="weekday_result"]').forEach(field => {
+                if (field.value.trim()) return;
+                field.value = names.map(name => name + ': ').join('\n');
+                changed++;
+            });
+            showToast(changed ? '빈 요일 칸에 작업자 이름 틀을 넣었습니다.' : '이미 모든 요일에 내용이 있습니다.');
         }
 
         function openEmployeePicker() { document.getElementById('employeePickerModal').classList.remove('hidden'); document.body.classList.add('daily-modal-open'); }
@@ -510,6 +593,10 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             e.preventDefault();
             const mode = document.querySelector('input[name="entry_mode"]:checked')?.value || 'self';
             if (mode === 'team' && selectedEmployees().length === 0) { showToast('본문에 구분해 넣을 작업자를 선택해 주세요.'); return; }
+            if (mode === 'team' && document.getElementById('weekday_mode').checked) {
+                const hasWeekdayContent = Array.from(document.querySelectorAll('textarea[name^="weekday_result"]')).some(field => field.value.trim());
+                if (!hasWeekdayContent) { showToast('저장할 요일의 작업 내용을 한 칸 이상 입력해 주세요.'); return; }
+            }
             document.getElementById('result_content').value = editor.getHTML();
             submitBtn.disabled = true;
             try {
@@ -525,6 +612,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         function editTask(btn) { 
             const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self'); }
             document.getElementById('task_id').value = btn.getAttribute('data-id'); 
+            document.getElementById('source_task_id').value = '';
             document.getElementById('target_date').value = btn.getAttribute('data-date'); 
             document.getElementById('company_name').value = btn.getAttribute('data-company'); 
             document.getElementById('task_category').value = btn.getAttribute('data-cat') || '일반업무'; 
@@ -534,18 +622,25 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             formTitle.innerHTML = '✏️ 단일 업무 수정 모드'; submitBtn.innerHTML = '수정 내용 저장'; submitBtn.classList.replace('bg-blue-600', 'bg-emerald-600'); window.scrollTo({ top: 0, behavior: 'smooth' }); 
         }
         
-        function carryOverTask(btn) { 
+        function extendTask(btn) {
+            const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self'); }
             document.getElementById('task_id').value = ''; 
+            document.getElementById('source_task_id').value = btn.getAttribute('data-id');
             document.getElementById('company_name').value = btn.getAttribute('data-company'); 
             document.getElementById('task_category').value = btn.getAttribute('data-cat') || '일반업무'; 
             document.getElementById('plan_content').value = btn.getAttribute('data-plan'); 
             document.getElementById('multi_day_check').disabled = false; 
-            editor.setHTML(getRawHtml(btn.getAttribute('data-id'))); 
-            formTitle.innerHTML = '🔄 지정 날짜로 복사'; submitBtn.innerHTML = '이 내용으로 새 글 등록'; submitBtn.classList.replace('bg-emerald-600', 'bg-blue-600'); window.scrollTo({ top: 0, behavior: 'smooth' }); showToast("과거 내용이 복사되었습니다. 상단의 날짜를 확인하세요!"); 
+            document.getElementById('multi_day_check').checked = true;
+            const nextDate = new Date(btn.getAttribute('data-date') + 'T00:00:00'); nextDate.setDate(nextDate.getDate() + 1);
+            const nextDateValue = nextDate.toISOString().slice(0, 10);
+            document.getElementById('target_date').value = nextDateValue;
+            toggleEndDate(); document.getElementById('end_date').value = nextDateValue;
+            editor.setHTML('');
+            formTitle.innerHTML = '📅 미완료 업무 기간 연장'; submitBtn.innerHTML = '비어 있는 날짜만 연장'; submitBtn.classList.replace('bg-emerald-600', 'bg-blue-600'); window.scrollTo({ top: 0, behavior: 'smooth' }); showToast('기존 결과는 복사하지 않습니다. 새 종료일을 선택하세요.');
         }
         
         function resetForm() { 
-            const currentDate = document.getElementById('target_date').value; document.getElementById('taskForm').reset(); document.getElementById('task_id').value = ''; document.getElementById('target_date').value = currentDate; document.getElementById('task_category').value = '일반업무'; document.getElementById('multi_day_check').disabled = false; toggleEndDate();
+            const currentDate = document.getElementById('target_date').value; document.getElementById('taskForm').reset(); document.getElementById('task_id').value = ''; document.getElementById('source_task_id').value = ''; document.getElementById('target_date').value = currentDate; document.getElementById('task_category').value = '일반업무'; document.getElementById('multi_day_check').disabled = false; toggleEndDate(); toggleWeekdayEntry();
             editor.setHTML(''); formTitle.innerHTML = '✨ 신규 업무 등록'; submitBtn.innerHTML = '등록 / 저장'; submitBtn.classList.replace('bg-emerald-600', 'bg-blue-600'); closeSpellcheck(); restoreEntryPreference();
         }
         
@@ -592,11 +687,12 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 if (!result.success) { showToast(result.message || '맞춤법 검사에 실패했습니다.'); return; }
                 document.getElementById('spellcheckProvider').textContent = result.provider_label;
                 document.getElementById('spellcheckNotice').textContent = result.notice || '';
-                document.getElementById('spellcheckRevised').value = result.revised;
                 const issueBox = document.getElementById('spellcheckIssues');
                 issueBox.innerHTML = result.issues.length
-                    ? result.issues.map(issue => `<div class="daily-spell-issue"><del>${escapeHtml(issue.original)}</del> → <ins>${escapeHtml(issue.revised)}</ins>${issue.help ? `<div class="mt-1 text-slate-500">${escapeHtml(issue.help)}</div>` : ''}</div>`).join('')
+                    ? result.issues.map((issue, index) => `<label class="daily-spell-issue daily-spell-choice${issue.safe ? '' : ' is-protected'}"><input type="checkbox" class="spellcheck-choice" data-index="${index}" ${issue.safe ? 'checked' : ''}><span><del>${escapeHtml(issue.original)}</del> → <ins>${escapeHtml(issue.revised)}</ins>${issue.help ? `<div class="mt-1 text-slate-500">${escapeHtml(issue.help)}</div>` : ''}${issue.warning ? `<div class="daily-spell-warning">${escapeHtml(issue.warning)}</div>` : ''}</span></label>`).join('')
                     : `<div class="daily-spell-issue" style="border-left-color:${result.is_fallback ? '#d97706' : '#059669'}">${result.is_fallback ? '기본 규칙에서 교정 항목을 찾지 못했습니다. 정밀 검사 결과가 아니므로 문장을 한 번 더 확인해 주세요.' : '발견된 교정 항목이 없습니다. 그대로 저장해도 좋습니다.'}</div>`;
+                issueBox.dataset.issues = JSON.stringify(result.issues || []);
+                document.getElementById('applySpellcheckBtn').classList.toggle('hidden', !result.issues.length);
                 document.getElementById('spellcheckPanel').classList.remove('hidden');
                 document.body.classList.add('daily-modal-open');
             } catch (error) { showToast('맞춤법 검사 서버에 연결하지 못했습니다.'); }
@@ -604,9 +700,26 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         }
 
         function applySpellcheck() {
-            editor.setMarkdown(document.getElementById('spellcheckRevised').value);
+            const issueBox = document.getElementById('spellcheckIssues');
+            const issues = JSON.parse(issueBox.dataset.issues || '[]');
+            const selected = Array.from(issueBox.querySelectorAll('.spellcheck-choice:checked')).map(input => issues[Number(input.dataset.index)]).filter(Boolean);
+            if (!selected.length) { showToast('적용할 교정 항목을 선택해 주세요.'); return; }
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = editor.getHTML();
+            const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT);
+            const textNodes = []; while (walker.nextNode()) textNodes.push(walker.currentNode);
+            let replacementCount = 0;
+            selected.forEach(issue => {
+                textNodes.forEach(node => {
+                    if (!node.nodeValue.includes(issue.original)) return;
+                    replacementCount += node.nodeValue.split(issue.original).length - 1;
+                    node.nodeValue = node.nodeValue.split(issue.original).join(issue.revised);
+                });
+            });
+            if (replacementCount === 0) { showToast('현재 편집 내용에서 선택 문구를 찾지 못했습니다.'); return; }
+            editor.setHTML(wrapper.innerHTML);
             closeSpellcheck();
-            showToast('교정문을 상세 내용에 적용했습니다.');
+            showToast(replacementCount + '개 교정을 적용했습니다. 문단과 목록 형식은 유지했습니다.');
         }
 
         function closeSpellcheck() { document.getElementById('spellcheckPanel').classList.add('hidden'); if (document.getElementById('employeePickerModal').classList.contains('hidden')) document.body.classList.remove('daily-modal-open'); }

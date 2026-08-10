@@ -5,6 +5,7 @@ include 'db_conn.php';
 if (!isset($_SESSION['uid'])) { header("Location: login.php"); exit; }
 require_once 'smw_extensions.php';
 require_once 'groupware_shell.php';
+require_once 'report_helpers.php';
 
 $uid = (int)$_SESSION['uid'];
 $u_info_res = @$conn->query("SELECT nickname, position, is_admin FROM users WHERE id = $uid");
@@ -66,6 +67,16 @@ function formatDates($dates_arr) {
     $start = $dates[0]; $end = end($dates);
     return date('m.d', strtotime($start)) . '(' . getKorDay($start) . ') ~ ' . date('m.d', strtotime($end)) . '(' . getKorDay($end) . ')';
 }
+function renderResultItems(array $items): string {
+    $html = '<div class="weekly-result-list">';
+    foreach ($items as $item) {
+        $dates = formatDates($item['dates'] ?? []);
+        $html .= '<div class="weekly-result-item"><span>- ' . htmlspecialchars((string)$item['text'], ENT_QUOTES, 'UTF-8') . '</span>';
+        if ($dates !== '') $html .= '<small>' . htmlspecialchars($dates, ENT_QUOTES, 'UTF-8') . '</small>';
+        $html .= '</div>';
+    }
+    return $html . '</div>';
+}
 
 if($result) {
     while($row = $result->fetch_assoc()) {
@@ -99,7 +110,7 @@ if($result) {
 
         if(!isset($report_data[$u_name][$period][$cat][$company][$plan_text])) {
             $report_data[$u_name][$period][$cat][$company][$plan_text] = array(
-                'dates' => array(), 'results' => array(), 'task_ids' => array(), 'comment_count' => 0
+                'dates' => array(), 'result_items' => array(), 'task_ids' => array(), 'comment_count' => 0
             ); 
         }
         $report_data[$u_name][$period][$cat][$company][$plan_text]['dates'][] = $row['target_date'];
@@ -110,9 +121,7 @@ if($result) {
         $result_text = preg_replace('/^(<p>(<br>|&nbsp;|\s)*<\/p>\s*)+/i', '', $result_text);
         $result_text = preg_replace('/(<p>(<br>|&nbsp;|\s)*<\/p>\s*)+$/i', '', $result_text);
         
-        if(!empty($result_text) && !in_array($result_text, $report_data[$u_name][$period][$cat][$company][$plan_text]['results'])) { 
-            $report_data[$u_name][$period][$cat][$company][$plan_text]['results'][] = $result_text; 
-        }
+        smw_add_result_items($report_data[$u_name][$period][$cat][$company][$plan_text]['result_items'], $result_text, $row['target_date']);
     }
 }
 ?>
@@ -173,6 +182,10 @@ if($result) {
     .badge-green { background-color: #dcfce7; color: #166534; padding: 3px 6px; border-radius: 4px; font-size: 12px; font-weight: bold; white-space: nowrap; margin-top: 2px; flex-shrink: 0; }
     
     .html-content { width: 100%; overflow-wrap: break-word; }
+    .weekly-result-list { display: grid; gap: 3px; }
+    .weekly-result-item { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .weekly-result-item > span { min-width: 0; }
+    .weekly-result-item > small { flex: 0 0 auto; color: #64748b; font-size: 10px; font-weight: 700; white-space: nowrap; }
     .html-content table { border-collapse: collapse; width: 100%; margin-top: 6px; margin-bottom: 6px; } 
     .html-content th, .html-content td { border: 1px solid #cbd5e1; padding: 6px; font-size: 13px; word-break: break-all; } 
     .html-content img { max-width: 100%; height: auto; border-radius: 4px; }
@@ -288,8 +301,8 @@ if($result) {
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
-                                        <?php if(!empty($details['results'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= implode('<hr style="margin:8px 0; border-top:1px dashed #cbd5e1;">', $details['results']) ?></div></div>
+                                        <?php if(!empty($details['result_items'])): ?>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
@@ -312,8 +325,8 @@ if($result) {
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
-                                        <?php if(!empty($details['results'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= implode('<hr style="margin:8px 0; border-top:1px dashed #cbd5e1;">', $details['results']) ?></div></div>
+                                        <?php if(!empty($details['result_items'])): ?>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
@@ -343,8 +356,8 @@ if($result) {
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
-                                        <?php if(!empty($details['results'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= implode('<hr style="margin:8px 0; border-top:1px dashed #cbd5e1;">', $details['results']) ?></div></div>
+                                        <?php if(!empty($details['result_items'])): ?>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
@@ -377,8 +390,8 @@ if($result) {
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
-                                        <?php if(!empty($details['results'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= implode('<hr style="margin:8px 0; border-top:1px dashed #cbd5e1;">', $details['results']) ?></div></div>
+                                        <?php if(!empty($details['result_items'])): ?>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
