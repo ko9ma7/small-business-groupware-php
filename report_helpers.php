@@ -38,6 +38,30 @@ function smw_add_result_items(array &$items, string $html, string $date): void
     }
 }
 
+function smw_date_runs(array $dates): array
+{
+    $dates = array_values(array_unique(array_filter(array_map('strval', $dates))));
+    sort($dates);
+    $runs = [];
+    foreach ($dates as $date) {
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        if (!$parsed || $parsed->format('Y-m-d') !== $date) continue;
+        $lastIndex = count($runs) - 1;
+        if ($lastIndex >= 0 && (new DateTimeImmutable($runs[$lastIndex][1]))->modify('+1 day')->format('Y-m-d') === $date) {
+            $runs[$lastIndex][1] = $date;
+        } else {
+            $runs[] = [$date, $date];
+        }
+    }
+    return $runs;
+}
+
+function smw_without_dates(array $dates, array $excludedDates): array
+{
+    $excluded = array_fill_keys(array_map('strval', $excludedDates), true);
+    return array_values(array_filter($dates, static fn($date) => !isset($excluded[(string)$date])));
+}
+
 function smw_spellcheck_issue(string $original, string $revised, string $help, bool $trustedRule = false): array
 {
     $hasTechnicalToken = preg_match('/[A-Za-z0-9_\/\\-]/u', $original . $revised) === 1;

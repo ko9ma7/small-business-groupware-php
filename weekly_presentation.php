@@ -62,10 +62,14 @@ $report_data = array();
 function getKorDay($date) { $map = array('Sun'=>'일', 'Mon'=>'월', 'Tue'=>'화', 'Wed'=>'수', 'Thu'=>'목', 'Fri'=>'금', 'Sat'=>'토'); return $map[date('D', strtotime($date))]; }
 function formatDates($dates_arr) {
     if(empty($dates_arr)) return '';
-    $dates = array_unique($dates_arr); sort($dates);
-    if(count($dates) == 1) return date('m.d', strtotime($dates[0])) . '(' . getKorDay($dates[0]) . ')';
-    $start = $dates[0]; $end = end($dates);
-    return date('m.d', strtotime($start)) . '(' . getKorDay($start) . ') ~ ' . date('m.d', strtotime($end)) . '(' . getKorDay($end) . ')';
+    $labels = [];
+    foreach (smw_date_runs($dates_arr) as [$start, $end]) {
+        $startLabel = date('m.d', strtotime($start)) . '(' . getKorDay($start) . ')';
+        $labels[] = $start === $end
+            ? $startLabel
+            : $startLabel . ' ~ ' . date('m.d', strtotime($end)) . '(' . getKorDay($end) . ')';
+    }
+    return implode(', ', $labels);
 }
 function renderResultItems(array $items): string {
     $html = '<div class="weekly-result-list">';

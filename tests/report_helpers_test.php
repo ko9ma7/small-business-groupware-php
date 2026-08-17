@@ -36,5 +36,15 @@ if ($preset['worker_ids'] !== [7, 11] || array_keys($preset['weekday_results']) 
     fwrite(STDERR, "preset payload normalization failed\n");
     exit(1);
 }
+$runs = smw_date_runs(['2026-08-17', '2026-08-18', '2026-08-20', '2026-08-21']);
+if ($runs !== [['2026-08-17', '2026-08-18'], ['2026-08-20', '2026-08-21']]) {
+    fwrite(STDERR, "non-contiguous date range merge failed\n");
+    exit(1);
+}
+$remainingDates = smw_without_dates(['2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21'], ['2026-08-19']);
+if ($remainingDates !== ['2026-08-17', '2026-08-18', '2026-08-20', '2026-08-21']) {
+    fwrite(STDERR, "excluded registration date filter failed\n");
+    exit(1);
+}
 
 echo "report helper checks passed\n";
