@@ -24,7 +24,7 @@ if (substr_count(smw_weekday_result_html("김성근: 탱크 도면\n진택: 프�
 }
 $fieldMeta = smw_field_day_metadata(1, [1 => '출장']);
 $defaultFieldMeta = smw_field_day_metadata(3, []);
-if ($fieldMeta !== ['company_name' => '월', 'plan_content' => '출장'] || $defaultFieldMeta !== ['company_name' => '수', 'plan_content' => '현장 작업']) {
+if ($fieldMeta !== ['company_name' => '현장 일지', 'plan_content' => '출장'] || $defaultFieldMeta !== ['company_name' => '현장 일지', 'plan_content' => '현장 작업']) {
     fwrite(STDERR, "field day metadata failed\n");
     exit(1);
 }

@@ -86,6 +86,7 @@ if($result) {
     while($row = $result->fetch_assoc()) {
         $u_name = "[{$row['position']}] " . $row['user_name'];
         $company = trim($row['company_name']);
+        if (in_array($company, ['월', '화', '수', '목', '금', '토', '일'], true)) $company = '현장 일지';
         $cat = isset($row['task_category']) ? $row['task_category'] : '일반업무';
         $period = ($row['target_date'] <= $tw_end) ? 'actual' : 'plan';
         

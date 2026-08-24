@@ -17,6 +17,7 @@ $selectable_ids = array_map('intval', array_column($selectable_users, 'id'));
 $managed_users = array_values(array_filter($selectable_users, static function($person) use ($user_id) {
     return (int)$person['id'] !== $user_id;
 }));
+$field_workers = $selectable_users;
 $user_report_preference = smw_user_preference($conn, $user_id);
 $saved_entry_mode = ($user_report_preference['last_entry_mode'] ?? 'self') === 'team' ? 'team' : 'self';
 
@@ -383,14 +384,14 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                         <section class="daily-picker-dialog">
                             <header><div><h3 id="employeePickerTitle"><i class="fa-solid fa-users"></i> 본문에 넣을 작업자 선택</h3><p>선택한 이름은 내 보고서에 ‘이름: 작업 내용’ 형식으로 들어갑니다.</p></div><button type="button" onclick="closeEmployeePicker()" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button></header>
                             <div class="daily-picker-body">
-                            <?php if(empty($managed_users)): ?>
+                            <?php if(empty($field_workers)): ?>
                                 <div class="daily-empty-team">관리자 설정에서 본문에 넣을 작업자를 먼저 연결해 주세요.</div>
                             <?php else: ?>
                                 <div class="daily-employee-grid">
-                                    <?php foreach($managed_users as $person): ?>
+                                    <?php foreach($field_workers as $person): ?>
                                         <label class="daily-employee-chip">
                                             <input type="checkbox" name="target_user_ids[]" value="<?= (int)$person['id'] ?>" data-name="<?= smw_h($person['nickname']) ?>" onchange="updateEmployeeSelection()">
-                                            <span><b><?= smw_h($person['nickname']) ?></b><small><?= smw_h($person['position']) ?><?= !empty($person['department_names'])?' · '.smw_h($person['department_names']):'' ?></small></span>
+                                            <span><b><?= smw_h($person['nickname']) ?><?= (int)$person['id'] === $user_id ? ' (본인)' : '' ?></b><small><?= smw_h($person['position']) ?><?= !empty($person['department_names'])?' · '.smw_h($person['department_names']):'' ?></small></span>
                                         </label>
                                     <?php endforeach; ?>
                                 </div>
@@ -428,23 +429,17 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                         <div class="daily-weekday-heading">
                             <div><h3 id="weekdayEntryTitle">현장 일지 간편 입력</h3><p>선택한 기간의 날짜별로 업무 구분과 업체별 작업 내용을 한 번에 적습니다.</p></div>
                         </div>
-                        <?php if(!empty($managed_users)): ?>
-                        <div class="daily-field-worker-tools">
-                            <button type="button" onclick="openEmployeePicker()" class="daily-secondary-button"><i class="fa-solid fa-users mr-1"></i>작업자 선택 <span id="fieldWorkerCount" class="daily-count-badge">0</span></button>
-                            <button type="button" onclick="fillWeekdayWorkerTemplates()" class="daily-secondary-button"><i class="fa-solid fa-user-plus mr-1"></i>빈 날짜에 이름 틀 넣기</button>
-                        </div>
-                        <?php endif; ?>
                         <div id="weekdayFields" class="daily-weekday-grid">
                             <?php foreach([1=>'월',2=>'화',3=>'수',4=>'목',5=>'금',6=>'토',7=>'일'] as $weekdayNumber=>$weekdayLabel): ?>
                                 <article class="daily-field-day hidden" data-weekday-card="<?= $weekdayNumber ?>">
-                                    <header><strong><?= $weekdayLabel ?>요일</strong><small data-weekday-date></small></header>
+                                    <header><strong><?= $weekdayLabel ?>요일</strong><span><small data-weekday-date></small><button type="button" onclick="openEmployeePicker(<?= $weekdayNumber ?>)" class="daily-day-worker-button"><i class="fa-solid fa-user-plus"></i> 이름 넣기</button></span></header>
                                     <label><span>업무 구분</span><input type="text" name="weekday_summary[<?= $weekdayNumber ?>]" data-weekday-summary="<?= $weekdayNumber ?>" list="fieldWorkTypes" placeholder="예: 현장 작업, 출장, 현장 미팅"></label>
                                     <label><span>업체·작업자별 상세 내용</span><textarea name="weekday_result[<?= $weekdayNumber ?>]" data-weekday="<?= $weekdayNumber ?>" rows="4" placeholder="예:\nA업체: 배관 용접\n홍길동: 프레임 가공"></textarea></label>
                                 </article>
                             <?php endforeach; ?>
                         </div>
                         <datalist id="fieldWorkTypes"><option value="현장 작업"><option value="출장"><option value="현장 미팅"><option value="외주 작업"><option value="설치·시운전"></datalist>
-                        <p class="daily-weekday-help">표시된 날짜만 저장됩니다. 작업자를 선택하면 이름 틀을 여러 날짜에 한 번에 넣을 수 있습니다.</p>
+                        <p class="daily-weekday-help">표시된 날짜만 각각 저장됩니다. 각 요일의 ‘이름 넣기’를 누르면 본인과 하위 작업자 구분 줄을 본문 다음 줄에 추가합니다.</p>
                     </section>
 
                     <div class="flex gap-4">
@@ -613,17 +608,22 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             refreshFieldDayVisibility();
         }
 
-        function fillWeekdayWorkerTemplates() {
+        let activeWeekdayTarget = null;
+
+        function insertWorkersIntoWeekday(weekday) {
             const names = selectedEmployees().map(item => item.dataset.name);
-            if (!names.length) { showToast('먼저 작업자를 선택해 주세요.'); openEmployeePicker(); return; }
-            let changed = 0;
-            document.querySelectorAll('[data-weekday-card]:not(.hidden) textarea[name^="weekday_result"]').forEach(field => {
-                if (field.value.trim()) return;
-                field.value = names.map(name => name + ': ').join('\n');
-                changed++;
-            });
-            showToast(changed ? '표시된 빈 날짜에 작업자 이름 틀을 넣었습니다.' : '표시된 날짜에 이미 내용이 있습니다.');
+            const field = document.querySelector(`textarea[data-weekday="${weekday}"]`);
+            if (!field || !names.length) { showToast('넣을 작업자를 선택해 주세요.'); return; }
+            const current = field.value.trimEnd();
+            const lines = names.filter(name => !new RegExp(`(^|\\n)\\s*${escapeRegExp(name)}\\s*:`, 'm').test(current)).map(name => name + ': ');
+            if (!lines.length) { showToast('선택한 작업자 줄이 이 요일에 이미 있습니다.'); return; }
+            field.value = (current ? current + '\n' : '') + lines.join('\n');
+            field.focus();
+            field.setSelectionRange(field.value.length, field.value.length);
+            showToast(lines.length + '명의 작업자 구분 줄을 추가했습니다.');
         }
+
+        function escapeRegExp(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
         function currentPresetPayload() {
             const weekdayResults = {};
@@ -737,8 +737,15 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             catch (error) { showToast('복원 서버에 연결하지 못했습니다.'); }
         }
 
-        function openEmployeePicker() { document.getElementById('employeePickerModal').classList.remove('hidden'); document.body.classList.add('daily-modal-open'); }
-        function closeEmployeePicker() { document.getElementById('employeePickerModal').classList.add('hidden'); if (document.getElementById('spellcheckPanel').classList.contains('hidden')) document.body.classList.remove('daily-modal-open'); }
+        function openEmployeePicker(weekday = null) {
+            activeWeekdayTarget = weekday === null ? null : Number(weekday);
+            const title = document.getElementById('employeePickerTitle');
+            const weekdayLabels = {1:'월',2:'화',3:'수',4:'목',5:'금',6:'토',7:'일'};
+            title.innerHTML = `<i class="fa-solid fa-users"></i> ${activeWeekdayTarget ? weekdayLabels[activeWeekdayTarget] + '요일에 넣을' : '본문에 넣을'} 작업자 선택`;
+            document.getElementById('employeePickerModal').classList.remove('hidden');
+            document.body.classList.add('daily-modal-open');
+        }
+        function closeEmployeePicker() { document.getElementById('employeePickerModal').classList.add('hidden'); activeWeekdayTarget = null; if (document.getElementById('spellcheckPanel').classList.contains('hidden')) document.body.classList.remove('daily-modal-open'); }
 
         function selectedEmployees() {
             return Array.from(document.querySelectorAll('input[name="target_user_ids[]"]:checked'));
@@ -747,8 +754,6 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         function updateEmployeeSelection() {
             const selected = selectedEmployees();
             document.getElementById('employeePickerCount').textContent = selected.length;
-            const fieldCount = document.getElementById('fieldWorkerCount');
-            if (fieldCount) fieldCount.textContent = selected.length;
             saveEntryPreference();
         }
 
@@ -765,7 +770,8 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
 
         function applySelectedWorkers() {
             const mode = document.querySelector('input[name="entry_mode"]:checked')?.value || 'self';
-            if (mode === 'team') fillWeekdayWorkerTemplates();
+            if (mode === 'team' && activeWeekdayTarget) insertWorkersIntoWeekday(activeWeekdayTarget);
+            else if (mode === 'team') showToast('이름을 넣을 요일을 먼저 선택해 주세요.');
             else insertSelectedNames();
             closeEmployeePicker();
         }

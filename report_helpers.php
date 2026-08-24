@@ -32,9 +32,8 @@ function smw_weekday_result_html(string $text): string
 function smw_field_day_metadata(int $weekday, array $summaries): array
 {
     $weekday = max(1, min(7, $weekday));
-    $labels = [1=>'월',2=>'화',3=>'수',4=>'목',5=>'금',6=>'토',7=>'일'];
     $summary = trim((string)($summaries[$weekday] ?? ''));
-    return ['company_name' => $labels[$weekday], 'plan_content' => $summary !== '' ? $summary : '현장 작업'];
+    return ['company_name' => '현장 일지', 'plan_content' => $summary !== '' ? $summary : '현장 작업'];
 }
 
 function smw_add_result_items(array &$items, string $html, string $date): void
