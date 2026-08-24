@@ -334,7 +334,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>일일 업무 관리</title>
 <script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<link rel="stylesheet" href="assets/daily-work.css?v=6">
+<link rel="stylesheet" href="assets/daily-work.css?v=<?= substr(md5_file(__DIR__ . '/assets/daily-work.css'), 0, 12) ?>">
 <link rel="stylesheet" href="assets/groupware-shell.css?v=3">
 <style>
     #toast { transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; }
