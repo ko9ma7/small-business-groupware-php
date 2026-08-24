@@ -37,40 +37,6 @@ function smw_field_day_metadata(int $weekday, array $summaries): array
     return ['company_name' => $labels[$weekday], 'plan_content' => $summary !== '' ? $summary : '현장 작업'];
 }
 
-function smw_field_item_result_html(array $workerNames, string $text): string
-{
-    $workerNames = array_values(array_unique(array_filter(array_map('trim', $workerNames))));
-    $prefix = $workerNames ? implode(', ', $workerNames) . ': ' : '';
-    $lines = preg_split('/\R+/u', trim($text)) ?: [];
-    $html = '';
-    foreach ($lines as $line) {
-        $line = trim($line);
-        if ($line === '') continue;
-        $html .= '<p>' . htmlspecialchars($prefix . $line, ENT_QUOTES, 'UTF-8') . '</p>';
-    }
-    return $html;
-}
-
-function smw_normalize_field_items(array $items): array
-{
-    $normalized = [];
-    foreach (array_slice($items, 0, 50) as $item) {
-        if (!is_array($item)) continue;
-        $workerIds = array_values(array_unique(array_filter(array_map('intval', (array)($item['workers'] ?? [])))));
-        $normalized[] = [
-            'company' => mb_substr(trim((string)($item['company'] ?? '')), 0, 100, 'UTF-8'),
-            'summary' => mb_substr(trim((string)($item['summary'] ?? '')), 0, 200, 'UTF-8'),
-            'result' => mb_substr(trim((string)($item['result'] ?? '')), 0, 10000, 'UTF-8'),
-            'start_date' => trim((string)($item['start_date'] ?? '')),
-            'end_date' => trim((string)($item['end_date'] ?? '')),
-            'workers' => array_slice($workerIds, 0, 200),
-            'include_saturday' => !empty($item['include_saturday']),
-            'include_sunday' => !empty($item['include_sunday']),
-        ];
-    }
-    return $normalized;
-}
-
 function smw_add_result_items(array &$items, string $html, string $date): void
 {
     foreach (smw_result_lines($html) as $resultLine) {
@@ -138,7 +104,6 @@ function smw_normalize_preset_payload(array $payload): array
         'weekday_mode' => !empty($payload['weekday_mode']),
         'weekday_results' => $weekdayResults,
         'weekday_summaries' => $weekdaySummaries,
-        'field_items' => smw_normalize_field_items((array)($payload['field_items'] ?? [])),
         'company_name' => mb_substr(trim((string)($payload['company_name'] ?? '')), 0, 100, 'UTF-8'),
         'task_category' => mb_substr(trim((string)($payload['task_category'] ?? '일반업무')), 0, 50, 'UTF-8'),
         'plan_content' => mb_substr(trim((string)($payload['plan_content'] ?? '')), 0, 2000, 'UTF-8'),
