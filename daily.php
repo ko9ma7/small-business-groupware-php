@@ -428,11 +428,12 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                         <input type="checkbox" id="weekday_mode" name="weekday_mode" value="1" checked hidden>
                         <div class="daily-weekday-heading">
                             <div><h3 id="weekdayEntryTitle">현장 일지 간편 입력</h3><p>선택한 기간의 날짜별로 업무 구분과 업체별 작업 내용을 한 번에 적습니다.</p></div>
+                            <span id="visibleFieldDaySummary" class="daily-weekday-summary" aria-live="polite"></span>
                         </div>
                         <div id="weekdayFields" class="daily-weekday-grid">
                             <?php foreach([1=>'월',2=>'화',3=>'수',4=>'목',5=>'금',6=>'토',7=>'일'] as $weekdayNumber=>$weekdayLabel): ?>
                                 <article class="daily-field-day hidden" data-weekday-card="<?= $weekdayNumber ?>">
-                                    <header><strong><?= $weekdayLabel ?>요일</strong><span><small data-weekday-date></small><button type="button" onclick="openEmployeePicker(<?= $weekdayNumber ?>)" class="daily-day-worker-button"><i class="fa-solid fa-user-plus"></i> 이름 넣기</button></span></header>
+                                    <header><strong><?= $weekdayLabel ?>요일</strong><span><small data-weekday-date></small><button type="button" data-copy-previous onclick="copyPreviousFieldDay(<?= $weekdayNumber ?>)" class="daily-day-copy-button hidden"><i class="fa-solid fa-copy"></i> 앞 날짜 가져오기</button><button type="button" onclick="openEmployeePicker(<?= $weekdayNumber ?>)" class="daily-day-worker-button"><i class="fa-solid fa-user-plus"></i> 이름 넣기</button></span></header>
                                     <label><span>업무 구분</span><input type="text" name="weekday_summary[<?= $weekdayNumber ?>]" data-weekday-summary="<?= $weekdayNumber ?>" list="fieldWorkTypes" placeholder="예: 현장 작업, 출장, 현장 미팅"></label>
                                     <label><span>업체·작업자별 상세 내용</span><textarea name="weekday_result[<?= $weekdayNumber ?>]" data-weekday="<?= $weekdayNumber ?>" rows="4" placeholder="예:\nA업체: 배관 용접\n홍길동: 프레임 가공"></textarea></label>
                                 </article>
@@ -862,7 +863,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                     if (included && !excluded.has(value)) {
                         const weekday = day === 0 ? 7 : day;
                         if (!activeDates.has(weekday)) activeDates.set(weekday, []);
-                        activeDates.get(weekday).push(value.slice(5).replace('-', '.'));
+                        activeDates.get(weekday).push(value);
                     }
                     cursor.setDate(cursor.getDate() + 1);
                 }
@@ -871,9 +872,35 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 const dates = activeDates.get(Number(card.dataset.weekdayCard)) || [];
                 card.classList.toggle('hidden', dates.length === 0);
                 const dateLabel = card.querySelector('[data-weekday-date]');
-                if (dateLabel) dateLabel.textContent = dates.join(', ');
+                if (dateLabel) dateLabel.textContent = dates.map(date => date.slice(5).replace('-', '.')).join(', ');
+                card.dataset.firstDate = dates[0] || '';
                 card.querySelectorAll('input, textarea').forEach(field => { field.disabled = dates.length === 0; });
             });
+            const visibleCards = cards.filter(card => !card.classList.contains('hidden')).sort((a, b) => a.dataset.firstDate.localeCompare(b.dataset.firstDate));
+            const grid = document.getElementById('weekdayFields');
+            grid.classList.toggle('is-single-day', visibleCards.length === 1);
+            visibleCards.forEach((card, index) => card.querySelector('[data-copy-previous]')?.classList.toggle('hidden', index === 0));
+            const summary = document.getElementById('visibleFieldDaySummary');
+            if (summary) summary.textContent = visibleCards.length ? `${visibleCards.length}개 요일 입력` : '저장할 날짜 없음';
+        }
+
+        function copyPreviousFieldDay(weekday) {
+            const visibleCards = Array.from(document.querySelectorAll('[data-weekday-card]:not(.hidden)')).sort((a, b) => a.dataset.firstDate.localeCompare(b.dataset.firstDate));
+            const targetIndex = visibleCards.findIndex(card => Number(card.dataset.weekdayCard) === Number(weekday));
+            if (targetIndex < 1) { showToast('가져올 앞 날짜가 없습니다.'); return; }
+            const source = visibleCards[targetIndex - 1];
+            const target = visibleCards[targetIndex];
+            const sourceSummary = source.querySelector('input[name^="weekday_summary"]');
+            const sourceResult = source.querySelector('textarea[name^="weekday_result"]');
+            const targetSummary = target.querySelector('input[name^="weekday_summary"]');
+            const targetResult = target.querySelector('textarea[name^="weekday_result"]');
+            if (!sourceSummary.value.trim() && !sourceResult.value.trim()) { showToast('앞 날짜에 가져올 내용이 없습니다.'); return; }
+            if ((targetSummary.value.trim() || targetResult.value.trim()) && !confirm('현재 요일의 내용을 앞 날짜 내용으로 바꾸시겠습니까?')) return;
+            targetSummary.value = sourceSummary.value;
+            targetResult.value = sourceResult.value;
+            targetResult.focus();
+            targetResult.setSelectionRange(targetResult.value.length, targetResult.value.length);
+            showToast('앞 날짜의 업무 구분과 상세 내용을 가져왔습니다.');
         }
 
         function showToast(msg) { const toast = document.getElementById('toast'); document.getElementById('toast-msg').innerText = msg; toast.classList.replace('toast-hide', 'toast-show'); setTimeout(() => { toast.classList.replace('toast-show', 'toast-hide'); }, 2000); }
