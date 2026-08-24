@@ -17,6 +17,8 @@ $selectable_ids = array_map('intval', array_column($selectable_users, 'id'));
 $managed_users = array_values(array_filter($selectable_users, static function($person) use ($user_id) {
     return (int)$person['id'] !== $user_id;
 }));
+$user_report_preference = smw_user_preference($conn, $user_id);
+$saved_entry_mode = ($user_report_preference['last_entry_mode'] ?? 'self') === 'team' ? 'team' : 'self';
 
 try {
     @$conn->query("ALTER TABLE report_tasks ADD COLUMN task_category VARCHAR(50) DEFAULT '일반업무'");
@@ -34,6 +36,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json; charset=utf-8');
     smw_verify_csrf();
     $action = $_POST['action'];
+
+    if ($action === 'save_entry_preference') {
+        $preferred_mode = ($_POST['entry_mode'] ?? 'self') === 'team' ? 'team' : 'self';
+        $preference_stmt = $conn->prepare(
+            "INSERT INTO report_user_preferences (user_id, last_entry_mode) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE last_entry_mode=VALUES(last_entry_mode)"
+        );
+        $preference_stmt->bind_param('is', $user_id, $preferred_mode);
+        $saved = $preference_stmt->execute();
+        echo json_encode(['success' => $saved]);
+        exit;
+    }
 
     if ($action === 'delete' || $action === 'bulk_delete') {
         $requested_ids = $action === 'bulk_delete' ? ($_POST['task_ids'] ?? []) : [$_POST['task_id'] ?? 0];
@@ -96,9 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $result_content = trim($_POST['result_content']); 
         $weekday_mode = $entry_mode === 'team' && !empty($_POST['weekday_mode']);
         $weekday_results = [];
+        $weekday_summaries = [];
         foreach ((array)($_POST['weekday_result'] ?? []) as $weekday => $weekday_text) {
             $weekday = (int)$weekday;
             if ($weekday >= 1 && $weekday <= 7) $weekday_results[$weekday] = trim((string)$weekday_text);
+        }
+        foreach ((array)($_POST['weekday_summary'] ?? []) as $weekday => $weekday_summary) {
+            $weekday = (int)$weekday;
+            if ($weekday >= 1 && $weekday <= 7) $weekday_summaries[$weekday] = trim((string)$weekday_summary);
         }
         if ($entry_mode === 'team' && !$weekday_mode && empty($worker_user_ids)) {
             echo json_encode(['success' => false, 'msg' => '작업자를 선택하거나 요일별 입력을 사용해 주세요.']);
@@ -134,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             return $parsed && $parsed->format('Y-m-d') === $value;
         };
         $excluded_dates = array_values(array_filter($excluded_dates, $valid_date));
-        if (!$valid_date($target_date) || !$valid_date($end_date) || $company_name === '' || $plan_content === '') {
+        if (!$valid_date($target_date) || !$valid_date($end_date) || (!$weekday_mode && ($company_name === '' || $plan_content === ''))) {
             echo json_encode(['success' => false, 'msg' => '일자, 프로젝트/업체명, 업무 요약을 정확히 입력해 주세요.']);
             exit;
         }
@@ -184,22 +203,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $skipped_count += count(array_intersect($registration_dates, $excluded_dates));
             foreach (smw_without_dates($registration_dates, $excluded_dates) as $curr_date) {
                 $date_result_content = $result_content;
+                $date_company_name = $company_name;
+                $date_plan_content = $plan_content;
                 if ($weekday_mode) {
                     $weekday = (int)date('N', strtotime($curr_date));
                     $weekday_text = $weekday_results[$weekday] ?? '';
                     if ($weekday_text === '') { $skipped_count++; continue; }
                     $date_result_content = smw_weekday_result_html($weekday_text);
+                    $field_metadata = smw_field_day_metadata($weekday, $weekday_summaries);
+                    $date_company_name = $field_metadata['company_name'];
+                    $date_plan_content = $field_metadata['plan_content'];
                 }
                 if ($source_task_id > 0) {
                     $duplicate_stmt = $conn->prepare(
                         "SELECT id FROM report_tasks WHERE user_id=? AND target_date=? AND company_name=? AND task_category=? AND plan_content=? LIMIT 1"
                     );
-                    $duplicate_stmt->bind_param('issss', $user_id, $curr_date, $company_name, $task_category, $plan_content);
+                    $duplicate_stmt->bind_param('issss', $user_id, $curr_date, $date_company_name, $task_category, $date_plan_content);
                     $duplicate_stmt->execute();
                     if ($duplicate_stmt->get_result()->num_rows > 0) { $skipped_count++; continue; }
                 }
                 $stmt = $conn->prepare("INSERT INTO report_tasks (user_id, target_date, company_name, task_category, plan_content, result_content, task_type) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt->bind_param("issssss", $user_id, $curr_date, $company_name, $task_category, $plan_content, $date_result_content, $task_type);
+                $stmt->bind_param("issssss", $user_id, $curr_date, $date_company_name, $task_category, $date_plan_content, $date_result_content, $task_type);
                 if($stmt->execute()) {
                     $new_id = (int)$stmt->insert_id;
                     $inserted_ids[] = $new_id;
@@ -225,6 +249,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 exit;
             }
         }
+
+        $preference_stmt = $conn->prepare(
+            "INSERT INTO report_user_preferences (user_id, last_entry_mode) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE last_entry_mode=VALUES(last_entry_mode)"
+        );
+        $preference_stmt->bind_param('is', $user_id, $entry_mode);
+        $preference_stmt->execute();
 
         if (!empty($inserted_ids) && !empty($_FILES['attachments']['name'][0])) {
             $upload_dir = 'uploads/tasks/';
@@ -302,7 +333,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>일일 업무 관리</title>
 <script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
-<link rel="stylesheet" href="assets/daily-work.css?v=5">
+<link rel="stylesheet" href="assets/daily-work.css?v=6">
 <link rel="stylesheet" href="assets/groupware-shell.css?v=3">
 <style>
     #toast { transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; }
@@ -335,14 +366,14 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                         <legend class="block font-bold text-gray-800 mb-2 text-sm">작성 방식</legend>
                         <div class="daily-mode-grid" role="radiogroup" aria-label="업무 작성 방식">
                             <label class="daily-mode-card">
-                                <input type="radio" name="entry_mode" value="self" checked onchange="setEntryMode('self')">
+                                <input type="radio" name="entry_mode" value="self" <?= $saved_entry_mode === 'self' ? 'checked' : '' ?> onchange="setEntryMode('self')">
                                 <span class="daily-mode-icon"><i class="fa-solid fa-user-pen"></i></span>
                                 <span><strong>1타입 · 내 업무 작성</strong><small>기존 방식 그대로 본인 업무를 등록합니다.</small></span>
                             </label>
                             <label class="daily-mode-card">
-                                <input type="radio" name="entry_mode" value="team" onchange="setEntryMode('team')">
+                                <input type="radio" name="entry_mode" value="team" <?= $saved_entry_mode === 'team' ? 'checked' : '' ?> onchange="setEntryMode('team')">
                                 <span class="daily-mode-icon"><i class="fa-solid fa-calendar-days"></i></span>
-                                <span><strong>2타입 · 요일별 현장 업무</strong><small>월~일 단위로 용접·가공 등 작업을 나누어 등록합니다.</small></span>
+                                <span><strong>2타입 · 현장 일지 간편 작성</strong><small>날짜별 출장·미팅·작업과 업체·작업자 내용을 한 번에 적습니다.</small></span>
                             </label>
                         </div>
                     </fieldset>
@@ -365,31 +396,13 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                                 </div>
                             <?php endif; ?>
                             </div>
-                            <footer><button type="button" onclick="closeEmployeePicker()" class="daily-secondary-button">취소</button><button type="button" onclick="insertSelectedNames(); closeEmployeePicker();" class="daily-apply-button"><i class="fa-solid fa-list-ul mr-1"></i>작업자 줄 넣기</button></footer>
+                            <footer><button type="button" onclick="closeEmployeePicker()" class="daily-secondary-button">취소</button><button type="button" onclick="applySelectedWorkers()" class="daily-apply-button"><i class="fa-solid fa-check mr-1"></i>선택 적용</button></footer>
                         </section>
                     </div>
 
-                    <section id="weekdayEntrySection" class="hidden daily-weekday-section" aria-labelledby="weekdayEntryTitle">
-                        <div class="daily-weekday-heading">
-                            <div><h3 id="weekdayEntryTitle">요일별 현장 업무 입력</h3><p>내용을 적은 요일만 작성자 본인의 보고서로 저장됩니다.</p></div>
-                            <input type="checkbox" id="weekday_mode" name="weekday_mode" value="1" checked hidden>
-                        </div>
-                        <div id="weekdayFields">
-                            <?php if(!empty($managed_users)): ?>
-                            <button type="button" onclick="fillWeekdayWorkerTemplates()" class="daily-secondary-button mb-3"><i class="fa-solid fa-user-plus mr-1"></i>빈 칸에 선택 작업자 틀 넣기</button>
-                            <?php endif; ?>
-                            <div class="daily-weekday-grid">
-                                <?php foreach([1=>'월',2=>'화',3=>'수',4=>'목',5=>'금',6=>'토',7=>'일'] as $weekdayNumber=>$weekdayLabel): ?>
-                                    <label><span><?= $weekdayLabel ?>요일</span><textarea name="weekday_result[<?= $weekdayNumber ?>]" data-weekday="<?= $weekdayNumber ?>" rows="3" placeholder="예: 용접 / 가공 작업"></textarea></label>
-                                <?php endforeach; ?>
-                            </div>
-                            <p class="daily-weekday-help">현장 작업자는 작업 내용만 적으면 됩니다. 관리자는 필요할 때 작업자 선택 버튼으로 이름 틀을 함께 넣을 수 있습니다.</p>
-                        </div>
-                    </section>
-                    
                     <div class="flex gap-4">
-                        <div class="w-1/2"><label class="block font-bold text-blue-700 mb-1 text-sm">시작 일자</label><input type="date" id="target_date" name="target_date" value="<?= date('Y-m-d') ?>" onchange="refreshExcludedDates()" class="w-full p-2 border border-blue-300 bg-blue-50 rounded" required></div>
-                        <div class="w-1/2"><label class="block font-bold text-gray-700 mb-1 text-sm">프로젝트/업체명</label><input type="text" id="company_name" name="company_name" placeholder="예: <?= smw_h($company_example) ?>" class="w-full p-2 border rounded" required></div>
+                        <div id="startDateField" class="w-1/2"><label class="block font-bold text-blue-700 mb-1 text-sm">시작 일자</label><input type="date" id="target_date" name="target_date" value="<?= date('Y-m-d') ?>" onchange="refreshExcludedDates()" class="w-full p-2 border border-blue-300 bg-blue-50 rounded" required></div>
+                        <div id="standardCompanyField" class="w-1/2"><label class="block font-bold text-gray-700 mb-1 text-sm">프로젝트/업체명</label><input type="text" id="company_name" name="company_name" placeholder="예: <?= smw_h($company_example) ?>" class="w-full p-2 border rounded" required></div>
                     </div>
                     
                     <div id="end_date_wrapper" class="hidden bg-indigo-50 p-3 rounded border border-indigo-200">
@@ -410,8 +423,32 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                         </fieldset>
                     </div>
 
+                    <section id="weekdayEntrySection" class="hidden daily-weekday-section" aria-labelledby="weekdayEntryTitle">
+                        <input type="checkbox" id="weekday_mode" name="weekday_mode" value="1" checked hidden>
+                        <div class="daily-weekday-heading">
+                            <div><h3 id="weekdayEntryTitle">현장 일지 간편 입력</h3><p>선택한 기간의 날짜별로 업무 구분과 업체별 작업 내용을 한 번에 적습니다.</p></div>
+                        </div>
+                        <?php if(!empty($managed_users)): ?>
+                        <div class="daily-field-worker-tools">
+                            <button type="button" onclick="openEmployeePicker()" class="daily-secondary-button"><i class="fa-solid fa-users mr-1"></i>작업자 선택 <span id="fieldWorkerCount" class="daily-count-badge">0</span></button>
+                            <button type="button" onclick="fillWeekdayWorkerTemplates()" class="daily-secondary-button"><i class="fa-solid fa-user-plus mr-1"></i>빈 날짜에 이름 틀 넣기</button>
+                        </div>
+                        <?php endif; ?>
+                        <div id="weekdayFields" class="daily-weekday-grid">
+                            <?php foreach([1=>'월',2=>'화',3=>'수',4=>'목',5=>'금',6=>'토',7=>'일'] as $weekdayNumber=>$weekdayLabel): ?>
+                                <article class="daily-field-day hidden" data-weekday-card="<?= $weekdayNumber ?>">
+                                    <header><strong><?= $weekdayLabel ?>요일</strong><small data-weekday-date></small></header>
+                                    <label><span>업무 구분</span><input type="text" name="weekday_summary[<?= $weekdayNumber ?>]" data-weekday-summary="<?= $weekdayNumber ?>" list="fieldWorkTypes" placeholder="예: 현장 작업, 출장, 현장 미팅"></label>
+                                    <label><span>업체·작업자별 상세 내용</span><textarea name="weekday_result[<?= $weekdayNumber ?>]" data-weekday="<?= $weekdayNumber ?>" rows="4" placeholder="예:\nA업체: 배관 용접\n홍길동: 프레임 가공"></textarea></label>
+                                </article>
+                            <?php endforeach; ?>
+                        </div>
+                        <datalist id="fieldWorkTypes"><option value="현장 작업"><option value="출장"><option value="현장 미팅"><option value="외주 작업"><option value="설치·시운전"></datalist>
+                        <p class="daily-weekday-help">표시된 날짜만 저장됩니다. 작업자를 선택하면 이름 틀을 여러 날짜에 한 번에 넣을 수 있습니다.</p>
+                    </section>
+
                     <div class="flex gap-4">
-                        <div class="w-1/3">
+                        <div id="categoryField" class="w-1/3">
                             <label class="block font-bold text-purple-700 mb-1 text-sm">분류</label>
                             <select id="task_category" name="task_category" class="w-full p-2 border border-purple-300 bg-purple-50 rounded font-bold text-purple-800">
                                 <option value="일반업무">일반 업무</option>
@@ -420,10 +457,10 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                                 <option value="기타사항">기타 사항</option>
                             </select>
                         </div>
-                        <div class="w-2/3"><label class="block font-bold text-gray-700 mb-1 text-sm">업무 요약</label><input type="text" id="plan_content" name="plan_content" class="w-full p-2 border rounded text-blue-800 font-bold" required></div>
+                        <div id="standardSummaryField" class="w-2/3"><label class="block font-bold text-gray-700 mb-1 text-sm">업무 요약</label><input type="text" id="plan_content" name="plan_content" class="w-full p-2 border rounded text-blue-800 font-bold" required></div>
                     </div>
 
-                    <div>
+                    <div id="standardDetailSection">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                             <label class="block font-bold text-emerald-700 text-sm">상세 내용 및 결과 (에디터)</label>
                             <div class="daily-editor-actions"><button type="button" id="employeePickerToolbar" onclick="openEmployeePicker()" class="hidden daily-secondary-button"><i class="fa-solid fa-users mr-1"></i>작업자 선택 <span id="employeePickerCount" class="daily-count-badge">0</span></button><button type="button" id="spellcheckBtn" onclick="checkSpelling()" class="daily-spell-button"><i class="fa-solid fa-spell-check mr-1"></i> 맞춤법·띄어쓰기 검사</button></div>
@@ -448,7 +485,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 <div class="px-5 py-4 bg-gray-50 border-b flex flex-wrap justify-between items-center gap-3"><div><h2 class="font-bold text-gray-800"><i class="fa-solid fa-list-check mr-2"></i>최근 업무 목록 (2주)</h2><p class="text-xs text-gray-500 mt-1">중간 날짜를 빼려면 해당 행의 체크박스를 선택한 뒤 삭제하세요.</p></div><div class="flex gap-2"><button type="button" id="bulkDeleteBtn" onclick="bulkDeleteTasks()" disabled class="text-xs bg-red-600 text-white px-3 py-2 rounded font-bold disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-calendar-xmark mr-1"></i>선택 날짜 <span id="bulkDeleteCount">0</span>개 삭제</button><a href="task_history.php" class="text-xs bg-slate-800 text-white px-3 py-2 rounded">전체 기록 보기 &rarr;</a></div></div>
                 <div class="overflow-x-auto max-h-[750px] overflow-y-auto">
                     <table class="w-full text-sm text-left text-gray-600">
-                        <thead class="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0 z-10 shadow-sm"><tr><th class="px-3 py-2 w-10 text-center"><input type="checkbox" id="select_all_tasks" onchange="toggleAllTasks(this.checked)" aria-label="전체 업무 선택"></th><th class="px-4 py-2 w-20">일자</th><th class="px-4 py-2">직원·프로젝트·요약</th><th class="px-4 py-2 text-center w-28">액션</th></tr></thead>
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0 z-10 shadow-sm"><tr><th class="px-3 py-2 w-10 text-center"><input type="checkbox" id="select_all_tasks" onchange="toggleAllTasks(this.checked)" aria-label="전체 업무 선택"></th><th class="px-4 py-2 w-20">일자</th><th class="px-4 py-2">직원·프로젝트·요약</th><th class="px-4 py-2 text-center w-40">액션</th></tr></thead>
                         <tbody>
                             <?php if(empty($my_tasks)): ?><tr><td colspan="4" class="text-center py-10 text-gray-400">등록된 내역이 없습니다.</td></tr><?php endif; ?>
                             <?php 
@@ -474,15 +511,15 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                                     </div>
                                     <div class="font-medium text-gray-800"><?= htmlspecialchars($t['plan_content']) ?></div>
                                 </td>
-                                <td class="px-4 py-3 text-center">
-                                    <button type="button" onclick="openCommentModal('<?= $t['group_task_ids'] ?>', this.getAttribute('data-title'), this)" data-title="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="w-full bg-teal-100 text-teal-700 hover:bg-teal-200 px-2 py-1 rounded text-xs font-bold mb-1 border border-teal-200"><i class="fa-regular fa-comments"></i> 코멘트 <?= $t['group_comment_count'] > 0 ? "<span class='text-red-500'>({$t['group_comment_count']})</span>" : "" ?></button>
-                                    <div class="flex justify-center gap-1 mb-1">
-                                        <button type="button" onclick="editTask(this)" data-id="<?= $t['id'] ?>" data-date="<?= $t['target_date'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold"><i class="fa-solid fa-pen"></i></button>
-                                        <button type="button" onclick="deleteTask(<?= $t['id'] ?>)" class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold"><i class="fa-solid fa-trash"></i></button>
-                                    </div>
-                                    <div class="daily-repeat-actions">
-                                        <button type="button" onclick="copyTask(this)" data-id="<?= $t['id'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="bg-violet-100 text-violet-700"><i class="fa-solid fa-copy"></i> 복사</button>
-                                        <button type="button" onclick="extendTask(this)" data-id="<?= $t['id'] ?>" data-date="<?= $t['target_date'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="bg-purple-100 text-purple-700"><i class="fa-solid fa-calendar-plus"></i> 연장</button>
+                                <td class="px-3 py-3 text-center">
+                                    <div class="daily-action-panel">
+                                        <button type="button" onclick="openCommentModal('<?= $t['group_task_ids'] ?>', this.getAttribute('data-title'), this)" data-title="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="daily-action-comment"><i class="fa-regular fa-comments"></i><span>코멘트</span><?= $t['group_comment_count'] > 0 ? "<b>{$t['group_comment_count']}</b>" : "" ?></button>
+                                        <div class="daily-action-grid">
+                                            <button type="button" onclick="editTask(this)" data-id="<?= $t['id'] ?>" data-date="<?= $t['target_date'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="is-edit"><i class="fa-solid fa-pen"></i><span>수정</span></button>
+                                            <button type="button" onclick="copyTask(this)" data-id="<?= $t['id'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="is-copy"><i class="fa-solid fa-copy"></i><span>복사</span></button>
+                                            <button type="button" onclick="extendTask(this)" data-id="<?= $t['id'] ?>" data-date="<?= $t['target_date'] ?>" data-company="<?= htmlspecialchars($t['company_name'], ENT_QUOTES) ?>" data-cat="<?= htmlspecialchars($t['task_category'], ENT_QUOTES) ?>" data-plan="<?= htmlspecialchars($t['plan_content'], ENT_QUOTES) ?>" class="is-extend"><i class="fa-solid fa-calendar-plus"></i><span>연장</span></button>
+                                            <button type="button" onclick="deleteTask(<?= $t['id'] ?>)" class="is-delete"><i class="fa-solid fa-trash"></i><span>삭제</span></button>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
@@ -527,6 +564,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         const submitBtn = document.getElementById('submitBtn');
         const csrfToken = '<?= smw_h(smw_csrf_token()) ?>';
         const entryStorageKey = 'smw_daily_entry_<?= $user_id ?>';
+        let preferredEntryMode = <?= json_encode($saved_entry_mode, JSON_UNESCAPED_UNICODE) ?>;
         let presetItems = [];
         let currentPresetId = 0;
         let presetReturnFocus = null;
@@ -541,45 +579,63 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             restoreEntryPreference();
         }, 120);
 
-        function setEntryMode(mode) {
+        function setEntryMode(mode, persist = true) {
             const isTeam = mode === 'team';
-            document.getElementById('employeePickerToolbar').classList.toggle('hidden', !isTeam);
             document.getElementById('weekdayEntrySection').classList.toggle('hidden', !isTeam);
+            document.getElementById('standardCompanyField').classList.toggle('hidden', isTeam);
+            document.getElementById('standardSummaryField').classList.toggle('hidden', isTeam);
+            document.getElementById('standardDetailSection').classList.toggle('hidden', isTeam);
+            document.getElementById('company_name').required = !isTeam;
+            document.getElementById('plan_content').required = !isTeam;
+            document.getElementById('startDateField').classList.toggle('w-1/2', !isTeam);
+            document.getElementById('startDateField').classList.toggle('w-full', isTeam);
+            document.getElementById('categoryField').classList.toggle('w-1/3', !isTeam);
+            document.getElementById('categoryField').classList.toggle('w-full', isTeam);
             document.getElementById('weekday_mode').checked = isTeam;
             toggleWeekdayEntry();
             if (!isTeam) closeEmployeePicker();
             saveEntryPreference();
+            preferredEntryMode = isTeam ? 'team' : 'self';
+            if (persist) persistEntryMode(preferredEntryMode);
+        }
+
+        function persistEntryMode(mode) {
+            const formData = new FormData();
+            formData.append('action', 'save_entry_preference');
+            formData.append('entry_mode', mode);
+            formData.append('smw_csrf', csrfToken);
+            fetch('daily.php', { method: 'POST', body: formData }).catch(() => {});
         }
 
         function toggleWeekdayEntry() {
             const enabled = document.getElementById('weekday_mode').checked;
             document.getElementById('weekdayFields').classList.toggle('hidden', !enabled);
-            if (enabled && !document.getElementById('multi_day_check').checked) {
-                document.getElementById('multi_day_check').checked = true;
-                toggleEndDate();
-            }
+            refreshFieldDayVisibility();
         }
 
         function fillWeekdayWorkerTemplates() {
             const names = selectedEmployees().map(item => item.dataset.name);
             if (!names.length) { showToast('먼저 작업자를 선택해 주세요.'); openEmployeePicker(); return; }
             let changed = 0;
-            document.querySelectorAll('textarea[name^="weekday_result"]').forEach(field => {
+            document.querySelectorAll('[data-weekday-card]:not(.hidden) textarea[name^="weekday_result"]').forEach(field => {
                 if (field.value.trim()) return;
                 field.value = names.map(name => name + ': ').join('\n');
                 changed++;
             });
-            showToast(changed ? '빈 요일 칸에 작업자 이름 틀을 넣었습니다.' : '이미 모든 요일에 내용이 있습니다.');
+            showToast(changed ? '표시된 빈 날짜에 작업자 이름 틀을 넣었습니다.' : '표시된 날짜에 이미 내용이 있습니다.');
         }
 
         function currentPresetPayload() {
             const weekdayResults = {};
+            const weekdaySummaries = {};
             document.querySelectorAll('textarea[name^="weekday_result"]').forEach(field => { weekdayResults[field.dataset.weekday] = field.value; });
+            document.querySelectorAll('input[name^="weekday_summary"]').forEach(field => { weekdaySummaries[field.dataset.weekdaySummary] = field.value; });
             return {
                 entry_mode: document.querySelector('input[name="entry_mode"]:checked')?.value || 'self',
                 worker_ids: selectedEmployees().map(item => Number(item.value)),
                 weekday_mode: document.getElementById('weekday_mode').checked,
                 weekday_results: weekdayResults,
+                weekday_summaries: weekdaySummaries,
                 company_name: document.getElementById('company_name').value,
                 task_category: document.getElementById('task_category').value,
                 plan_content: document.getElementById('plan_content').value,
@@ -660,6 +716,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             document.querySelectorAll('input[name="target_user_ids[]"]').forEach(input => { input.checked = (payload.worker_ids || []).map(Number).includes(Number(input.value)); });
             document.getElementById('weekday_mode').checked = Boolean(payload.weekday_mode);
             document.querySelectorAll('textarea[name^="weekday_result"]').forEach(field => { field.value = payload.weekday_results?.[field.dataset.weekday] || ''; });
+            document.querySelectorAll('input[name^="weekday_summary"]').forEach(field => { field.value = payload.weekday_summaries?.[field.dataset.weekdaySummary] || ''; });
             document.getElementById('company_name').value = payload.company_name || '';
             document.getElementById('task_category').value = payload.task_category || '일반업무';
             document.getElementById('plan_content').value = payload.plan_content || '';
@@ -690,6 +747,8 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         function updateEmployeeSelection() {
             const selected = selectedEmployees();
             document.getElementById('employeePickerCount').textContent = selected.length;
+            const fieldCount = document.getElementById('fieldWorkerCount');
+            if (fieldCount) fieldCount.textContent = selected.length;
             saveEntryPreference();
         }
 
@@ -704,16 +763,23 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             showToast(lines.length + '명의 작업자 구분 줄을 추가했습니다.');
         }
 
+        function applySelectedWorkers() {
+            const mode = document.querySelector('input[name="entry_mode"]:checked')?.value || 'self';
+            if (mode === 'team') fillWeekdayWorkerTemplates();
+            else insertSelectedNames();
+            closeEmployeePicker();
+        }
+
         function saveEntryPreference() {
             const mode = document.querySelector('input[name="entry_mode"]:checked')?.value || 'self';
             const targets = selectedEmployees().map(item => item.value);
-            localStorage.setItem(entryStorageKey, JSON.stringify({ mode, targets }));
+            try { localStorage.setItem(entryStorageKey, JSON.stringify({ mode, targets })); } catch (error) {}
         }
 
         function restoreEntryPreference() {
             try {
                 const saved = JSON.parse(localStorage.getItem(entryStorageKey) || '{}');
-                const requestedMode = new URLSearchParams(location.search).get('entry') === 'team' ? 'team' : saved.mode;
+                const requestedMode = preferredEntryMode;
                 const modeInput = document.querySelector(`input[name="entry_mode"][value="${requestedMode}"]`);
                 if (modeInput && !modeInput.disabled) modeInput.checked = true;
                 (saved.targets || []).forEach(id => {
@@ -722,7 +788,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 });
             } catch (error) {}
             const mode = document.querySelector('input[name="entry_mode"]:checked')?.value || 'self';
-            setEntryMode(mode);
+            setEntryMode(mode, false);
             updateEmployeeSelection();
         }
         
@@ -744,13 +810,13 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             const optionBox = document.getElementById('excludedDateOptions');
             if (!optionBox) return;
             const selected = new Set(Array.from(optionBox.querySelectorAll('input:checked')).map(input => input.value));
-            if (!document.getElementById('multi_day_check').checked) { optionBox.innerHTML = '<span>연속 일자 등록을 선택하면 날짜가 표시됩니다.</span>'; return; }
+            if (!document.getElementById('multi_day_check').checked) { optionBox.innerHTML = '<span>연속 일자 등록을 선택하면 날짜가 표시됩니다.</span>'; refreshFieldDayVisibility(); return; }
             const startValue = document.getElementById('target_date').value;
             const endValue = document.getElementById('end_date').value;
-            if (!startValue || !endValue) { optionBox.innerHTML = '<span>시작일과 종료일을 선택해 주세요.</span>'; return; }
+            if (!startValue || !endValue) { optionBox.innerHTML = '<span>시작일과 종료일을 선택해 주세요.</span>'; refreshFieldDayVisibility(); return; }
             const start = new Date(startValue + 'T00:00:00');
             const end = new Date(endValue + 'T00:00:00');
-            if (end < start) { optionBox.innerHTML = '<span>종료일은 시작일 이후로 선택해 주세요.</span>'; return; }
+            if (end < start) { optionBox.innerHTML = '<span>종료일은 시작일 이후로 선택해 주세요.</span>'; refreshFieldDayVisibility(); return; }
             const includeSaturday = document.querySelector('input[name="include_saturday"]').checked;
             const includeSunday = document.querySelector('input[name="include_sunday"]').checked;
             const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
@@ -765,6 +831,43 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
                 cursor.setDate(cursor.getDate() + 1);
             }
             optionBox.innerHTML = options.length ? options.join('') : '<span>현재 조건에서 등록되는 날짜가 없습니다.</span>';
+            optionBox.querySelectorAll('input').forEach(input => input.addEventListener('change', refreshFieldDayVisibility));
+            refreshFieldDayVisibility();
+        }
+
+        function refreshFieldDayVisibility() {
+            const cards = Array.from(document.querySelectorAll('[data-weekday-card]'));
+            if (!cards.length) return;
+            const startValue = document.getElementById('target_date').value;
+            const multi = document.getElementById('multi_day_check').checked;
+            const endValue = multi ? document.getElementById('end_date').value : startValue;
+            const activeDates = new Map();
+            if (startValue && endValue) {
+                const start = new Date(startValue + 'T00:00:00');
+                const end = new Date(endValue + 'T00:00:00');
+                const excluded = new Set(Array.from(document.querySelectorAll('input[name="excluded_dates[]"]:checked')).map(input => input.value));
+                const includeSaturday = document.querySelector('input[name="include_saturday"]').checked;
+                const includeSunday = document.querySelector('input[name="include_sunday"]').checked;
+                const cursor = new Date(start);
+                while (cursor <= end && cursor.getTime() - start.getTime() <= 370 * 86400000) {
+                    const day = cursor.getDay();
+                    const value = localDateValue(cursor);
+                    const included = (day !== 6 && day !== 0) || (day === 6 && includeSaturday) || (day === 0 && includeSunday);
+                    if (included && !excluded.has(value)) {
+                        const weekday = day === 0 ? 7 : day;
+                        if (!activeDates.has(weekday)) activeDates.set(weekday, []);
+                        activeDates.get(weekday).push(value.slice(5).replace('-', '.'));
+                    }
+                    cursor.setDate(cursor.getDate() + 1);
+                }
+            }
+            cards.forEach(card => {
+                const dates = activeDates.get(Number(card.dataset.weekdayCard)) || [];
+                card.classList.toggle('hidden', dates.length === 0);
+                const dateLabel = card.querySelector('[data-weekday-date]');
+                if (dateLabel) dateLabel.textContent = dates.join(', ');
+                card.querySelectorAll('input, textarea').forEach(field => { field.disabled = dates.length === 0; });
+            });
         }
 
         function showToast(msg) { const toast = document.getElementById('toast'); document.getElementById('toast-msg').innerText = msg; toast.classList.replace('toast-hide', 'toast-show'); setTimeout(() => { toast.classList.replace('toast-show', 'toast-hide'); }, 2000); }
@@ -772,8 +875,8 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
             e.preventDefault();
             const mode = document.querySelector('input[name="entry_mode"]:checked')?.value || 'self';
             if (mode === 'team' && document.getElementById('weekday_mode').checked) {
-                const hasWeekdayContent = Array.from(document.querySelectorAll('textarea[name^="weekday_result"]')).some(field => field.value.trim());
-                if (!hasWeekdayContent) { showToast('저장할 요일의 작업 내용을 한 칸 이상 입력해 주세요.'); return; }
+                const hasWeekdayContent = Array.from(document.querySelectorAll('textarea[name^="weekday_result"]:not(:disabled)')).some(field => field.value.trim());
+                if (!hasWeekdayContent) { showToast('표시된 날짜 중 하나 이상의 상세 작업 내용을 입력해 주세요.'); return; }
             }
             document.getElementById('result_content').value = editor.getHTML();
             submitBtn.disabled = true;
@@ -788,7 +891,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         function getRawHtml(id) { const ta = document.getElementById('res_raw_' + id); return ta ? ta.value : ''; }
 
         function editTask(btn) { 
-            const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self'); }
+            const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self', false); }
             document.getElementById('task_id').value = btn.getAttribute('data-id'); 
             document.getElementById('source_task_id').value = '';
             document.getElementById('target_date').value = btn.getAttribute('data-date'); 
@@ -801,7 +904,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         }
 
         function copyTask(btn) {
-            const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self'); }
+            const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self', false); }
             document.getElementById('task_id').value = '';
             document.getElementById('source_task_id').value = '';
             document.getElementById('company_name').value = btn.getAttribute('data-company');
@@ -816,7 +919,7 @@ if($att_res) { while($att = $att_res->fetch_assoc()) { $attachments_map[$att['re
         }
         
         function extendTask(btn) {
-            const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self'); }
+            const selfMode = document.querySelector('input[name="entry_mode"][value="self"]'); if (selfMode) { selfMode.checked = true; setEntryMode('self', false); }
             document.getElementById('task_id').value = ''; 
             document.getElementById('source_task_id').value = btn.getAttribute('data-id');
             document.getElementById('company_name').value = btn.getAttribute('data-company'); 

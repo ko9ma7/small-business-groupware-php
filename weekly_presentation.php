@@ -266,7 +266,7 @@ if($result) {
     <div class="flex gap-2">
         <button class="btn btn-gray" onclick="location.href='index.php'"><i class="fa-solid fa-arrow-left"></i> 대시보드</button>
         <div class="weekly-menu-wrap"><button type="button" class="btn btn-dark" onclick="document.getElementById('weeklyQuickMenu').classList.toggle('hidden')"><i class="fa-solid fa-bars"></i> 전체 메뉴</button><nav id="weeklyQuickMenu" class="weekly-quick-menu hidden" aria-label="업무 메뉴"><a href="daily.php"><i class="fa-solid fa-pen-to-square"></i>일일 업무</a><a href="approval_list.php"><i class="fa-solid fa-file-signature"></i>전자결재</a><a href="board.php"><i class="fa-solid fa-clipboard-list"></i>게시판</a><a href="address_book.php"><i class="fa-solid fa-address-book"></i>주소록</a></nav></div>
-        <button class="btn bg-blue-600" onclick="location.href='daily.php?entry=team'"><i class="fa-solid fa-pen-to-square"></i> 일일 업무 작성</button>
+        <button class="btn bg-blue-600" onclick="location.href='daily.php'"><i class="fa-solid fa-pen-to-square"></i> 일일 업무 작성</button>
         <button class="btn btn-excel" onclick="location.href='export_excel.php?date=<?= $ref_date_str ?>'"><i class="fa-solid fa-file-excel"></i> 엑셀 다운로드</button>
     </div>
     <div class="date-nav">

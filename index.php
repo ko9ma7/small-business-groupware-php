@@ -84,11 +84,13 @@ if ($c_res) $recent_comments = $c_res->fetch_all(MYSQLI_ASSOC);
 $birthdays = [];
 $schedules = [];
 $current_month = date('m');
+$month_start = date('Y-m-01');
+$month_end = date('Y-m-t');
 
 $b_res = $conn->query("SELECT nickname, position, birth_date, birth_type FROM users WHERE MONTH(birth_date) = '$current_month' ORDER BY DAY(birth_date) ASC");
 if ($b_res) $birthdays = $b_res->fetch_all(MYSQLI_ASSOC);
 
-$s_res = $conn->query("SELECT title, start_date, end_date FROM schedules WHERE MONTH(start_date) = '$current_month' OR MONTH(end_date) = '$current_month' ORDER BY start_date ASC");
+$s_res = $conn->query("SELECT title, start_date, end_date FROM schedules WHERE start_date <= '$month_end' AND end_date >= '$month_start' ORDER BY start_date ASC, end_date ASC");
 if ($s_res) $schedules = $s_res->fetch_all(MYSQLI_ASSOC);
 
 $dashboard_tasks = [];

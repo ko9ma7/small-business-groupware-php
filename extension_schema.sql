@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS user_org_assignments (
 CREATE TABLE IF NOT EXISTS report_user_preferences (
     user_id INT PRIMARY KEY,
     input_mode ENUM('daily','weekly','monthly') NOT NULL DEFAULT 'daily',
+    last_entry_mode ENUM('self','team') NOT NULL DEFAULT 'self',
     last_target_id INT NULL,
     last_company VARCHAR(100) NOT NULL DEFAULT '',
     last_category VARCHAR(50) NOT NULL DEFAULT '일반업무',

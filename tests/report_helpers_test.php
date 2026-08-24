@@ -22,6 +22,12 @@ if (substr_count(smw_weekday_result_html("김성근: 탱크 도면\n진택: 프�
     fwrite(STDERR, "weekday HTML conversion failed\n");
     exit(1);
 }
+$fieldMeta = smw_field_day_metadata(1, [1 => '출장']);
+$defaultFieldMeta = smw_field_day_metadata(3, []);
+if ($fieldMeta !== ['company_name' => '월', 'plan_content' => '출장'] || $defaultFieldMeta !== ['company_name' => '수', 'plan_content' => '현장 작업']) {
+    fwrite(STDERR, "field day metadata failed\n");
+    exit(1);
+}
 $technical = smw_spellcheck_issue('프레임cover', '프레임 cover', '제안');
 $knownTypo = smw_spellcheck_issue('날자', '날짜', '기본 규칙', true);
 if ($technical['safe'] !== false || $knownTypo['safe'] !== true) {
@@ -30,9 +36,10 @@ if ($technical['safe'] !== false || $knownTypo['safe'] !== true) {
 }
 $preset = smw_normalize_preset_payload([
     'entry_mode' => 'team', 'worker_ids' => ['7', 7, 0, 11], 'weekday_mode' => 1,
-    'weekday_results' => ['1' => '김성근: 탱크 도면', '9' => '제외'], 'company_name' => '  프로젝트 A  '
+    'weekday_results' => ['1' => '김성근: 탱크 도면', '9' => '제외'],
+    'weekday_summaries' => ['1' => '  현장 작업  ', '8' => '제외'], 'company_name' => '  프로젝트 A  '
 ]);
-if ($preset['worker_ids'] !== [7, 11] || array_keys($preset['weekday_results']) !== [1] || $preset['company_name'] !== '프로젝트 A') {
+if ($preset['worker_ids'] !== [7, 11] || array_keys($preset['weekday_results']) !== [1] || $preset['weekday_summaries'] !== [1 => '현장 작업'] || $preset['company_name'] !== '프로젝트 A') {
     fwrite(STDERR, "preset payload normalization failed\n");
     exit(1);
 }

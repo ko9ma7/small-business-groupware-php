@@ -8,7 +8,7 @@ if (!$user) {
 }
 $portal_identity = smw_portal_identity($conn);
 
-header('Location: daily.php?entry=team');
+header('Location: daily.php');
 exit;
 
 $uid = (int)$user['id'];

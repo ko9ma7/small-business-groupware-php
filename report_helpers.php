@@ -29,6 +29,14 @@ function smw_weekday_result_html(string $text): string
     return $html;
 }
 
+function smw_field_day_metadata(int $weekday, array $summaries): array
+{
+    $weekday = max(1, min(7, $weekday));
+    $labels = [1=>'월',2=>'화',3=>'수',4=>'목',5=>'금',6=>'토',7=>'일'];
+    $summary = trim((string)($summaries[$weekday] ?? ''));
+    return ['company_name' => $labels[$weekday], 'plan_content' => $summary !== '' ? $summary : '현장 작업'];
+}
+
 function smw_add_result_items(array &$items, string $html, string $date): void
 {
     foreach (smw_result_lines($html) as $resultLine) {
@@ -80,15 +88,22 @@ function smw_normalize_preset_payload(array $payload): array
 {
     $workerIds = array_values(array_unique(array_filter(array_map('intval', (array)($payload['worker_ids'] ?? [])))));
     $weekdayResults = [];
+    $weekdaySummaries = [];
     foreach ((array)($payload['weekday_results'] ?? []) as $day => $value) {
         $day = (int)$day;
         if ($day >= 1 && $day <= 7) $weekdayResults[(string)$day] = mb_substr((string)$value, 0, 5000, 'UTF-8');
+    }
+    foreach ((array)($payload['weekday_summaries'] ?? []) as $day => $value) {
+        $day = (int)$day;
+        $value = trim((string)$value);
+        if ($day >= 1 && $day <= 7 && $value !== '') $weekdaySummaries[$day] = mb_substr($value, 0, 120, 'UTF-8');
     }
     return [
         'entry_mode' => ($payload['entry_mode'] ?? 'self') === 'team' ? 'team' : 'self',
         'worker_ids' => array_slice($workerIds, 0, 200),
         'weekday_mode' => !empty($payload['weekday_mode']),
         'weekday_results' => $weekdayResults,
+        'weekday_summaries' => $weekdaySummaries,
         'company_name' => mb_substr(trim((string)($payload['company_name'] ?? '')), 0, 100, 'UTF-8'),
         'task_category' => mb_substr(trim((string)($payload['task_category'] ?? '일반업무')), 0, 50, 'UTF-8'),
         'plan_content' => mb_substr(trim((string)($payload['plan_content'] ?? '')), 0, 2000, 'UTF-8'),

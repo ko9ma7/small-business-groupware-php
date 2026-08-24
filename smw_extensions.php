@@ -50,6 +50,7 @@ function smw_ensure_extension_schema(mysqli $conn): bool
         "CREATE TABLE IF NOT EXISTS report_user_preferences (
             user_id INT PRIMARY KEY,
             input_mode ENUM('daily','weekly','monthly') NOT NULL DEFAULT 'daily',
+            last_entry_mode ENUM('self','team') NOT NULL DEFAULT 'self',
             last_target_id INT NULL,
             last_company VARCHAR(100) NOT NULL DEFAULT '',
             last_category VARCHAR(50) NOT NULL DEFAULT '일반업무',
@@ -107,6 +108,11 @@ function smw_ensure_extension_schema(mysqli $conn): bool
         if (!$conn->query($query)) {
             return false;
         }
+    }
+
+    $entryModeColumn = $conn->query("SHOW COLUMNS FROM report_user_preferences LIKE 'last_entry_mode'");
+    if (!$entryModeColumn || $entryModeColumn->num_rows === 0) {
+        if (!$conn->query("ALTER TABLE report_user_preferences ADD COLUMN last_entry_mode ENUM('self','team') NOT NULL DEFAULT 'self' AFTER input_mode")) return false;
     }
 
     $settingsSeed = "INSERT IGNORE INTO site_settings (setting_key, setting_value) VALUES
@@ -193,6 +199,7 @@ function smw_user_preference(mysqli $conn, int $userId): array
     return [
         'user_id' => $userId,
         'input_mode' => 'daily',
+        'last_entry_mode' => 'self',
         'last_target_id' => $userId,
         'last_company' => '',
         'last_category' => '일반업무',
