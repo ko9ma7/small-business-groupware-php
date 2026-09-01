@@ -28,6 +28,15 @@ if ($fieldMeta !== ['company_name' => '현장 일지', 'plan_content' => '출장
     fwrite(STDERR, "field day metadata failed\n");
     exit(1);
 }
+$currentWeekday = smw_weekday_task_info(['target_date'=>'2026-09-01', 'company_name'=>'현장 일지', 'plan_content'=>'출장']);
+$oldCompanyWeekday = smw_weekday_task_info(['target_date'=>'2026-09-02', 'company_name'=>'수', 'plan_content'=>'작업 내용']);
+$oldPlanWeekday = smw_weekday_task_info(['target_date'=>'2026-09-03', 'company_name'=>'출장', 'plan_content'=>'목요일']);
+$classicTask = smw_weekday_task_info(['target_date'=>'2026-09-04', 'company_name'=>'A업체', 'plan_content'=>'도면 작성']);
+if (($currentWeekday['group_label'] ?? '') !== '화요일 · 09.01' || ($currentWeekday['summary'] ?? '') !== '출장'
+    || ($oldCompanyWeekday['summary'] ?? '') !== '작업 내용' || ($oldPlanWeekday['summary'] ?? '') !== '출장' || $classicTask !== null) {
+    fwrite(STDERR, "weekday task normalization failed\n");
+    exit(1);
+}
 $technical = smw_spellcheck_issue('프레임cover', '프레임 cover', '제안');
 $knownTypo = smw_spellcheck_issue('날자', '날짜', '기본 규칙', true);
 if ($technical['safe'] !== false || $knownTypo['safe'] !== true) {

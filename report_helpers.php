@@ -36,6 +36,31 @@ function smw_field_day_metadata(int $weekday, array $summaries): array
     return ['company_name' => '현장 일지', 'plan_content' => $summary !== '' ? $summary : '현장 작업'];
 }
 
+function smw_weekday_task_info(array $task): ?array
+{
+    $date = trim((string)($task['target_date'] ?? ''));
+    $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return null;
+
+    $company = trim((string)($task['company_name'] ?? ''));
+    $plan = trim((string)($task['plan_content'] ?? ''));
+    $weekdayPattern = '/^(월|화|수|목|금|토|일)(요일)?$/u';
+    $isCurrentWeekdayEntry = in_array(preg_replace('/\s+/u', '', $company), ['현장일지', '요일별일지'], true);
+    $companyIsWeekday = preg_match($weekdayPattern, $company) === 1;
+    $planIsWeekday = preg_match($weekdayPattern, $plan) === 1;
+    if (!$isCurrentWeekdayEntry && !$companyIsWeekday && !$planIsWeekday) return null;
+
+    $summary = $planIsWeekday ? $company : $plan;
+    if ($summary === '' || preg_match($weekdayPattern, $summary) === 1) $summary = '작업 내용';
+    $weekdayLabels = [1=>'월요일',2=>'화요일',3=>'수요일',4=>'목요일',5=>'금요일',6=>'토요일',7=>'일요일'];
+    $weekday = (int)$parsedDate->format('N');
+    return [
+        'group_key' => '@weekday:' . $date,
+        'group_label' => $weekdayLabels[$weekday] . ' · ' . $parsedDate->format('m.d'),
+        'summary' => $summary,
+    ];
+}
+
 function smw_add_result_items(array &$items, string $html, string $date): void
 {
     foreach (smw_result_lines($html) as $resultLine) {

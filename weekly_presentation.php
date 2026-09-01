@@ -71,12 +71,21 @@ function formatDates($dates_arr) {
     }
     return implode(', ', $labels);
 }
-function renderResultItems(array $items): string {
+function isWeekdayGroup(string $company): bool {
+    return str_starts_with($company, '@weekday:');
+}
+function weeklyCompanyLabel(string $company): string {
+    if (!isWeekdayGroup($company)) return $company;
+    $date = substr($company, strlen('@weekday:'));
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    return $parsed ? getKorDay($date) . '요일 · ' . $parsed->format('m.d') : '요일별 작업';
+}
+function renderResultItems(array $items, bool $showDates = true): string {
     $html = '<div class="weekly-result-list">';
     foreach ($items as $item) {
         $dates = formatDates($item['dates'] ?? []);
         $html .= '<div class="weekly-result-item"><span>- ' . htmlspecialchars((string)$item['text'], ENT_QUOTES, 'UTF-8') . '</span>';
-        if ($dates !== '') $html .= '<small>' . htmlspecialchars($dates, ENT_QUOTES, 'UTF-8') . '</small>';
+        if ($showDates && $dates !== '') $html .= '<small>' . htmlspecialchars($dates, ENT_QUOTES, 'UTF-8') . '</small>';
         $html .= '</div>';
     }
     return $html . '</div>';
@@ -85,8 +94,9 @@ function renderResultItems(array $items): string {
 if($result) {
     while($row = $result->fetch_assoc()) {
         $u_name = "[{$row['position']}] " . $row['user_name'];
-        $company = trim($row['company_name']);
-        if (in_array($company, ['월', '화', '수', '목', '금', '토', '일'], true)) $company = '현장 일지';
+        $weekdayTask = smw_weekday_task_info($row);
+        $company = $weekdayTask['group_key'] ?? trim($row['company_name']);
+        $plan_text = $weekdayTask['summary'] ?? trim($row['plan_content']);
         $cat = isset($row['task_category']) ? $row['task_category'] : '일반업무';
         $period = ($row['target_date'] <= $tw_end) ? 'actual' : 'plan';
         
@@ -102,15 +112,14 @@ if($result) {
             foreach($attachments_map[$row['id']] as $img_path) {
                 if(preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $img_path)) {
                     $report_data[$u_name]['images'][] = array(
-                        'company' => $company,
-                        'plan' => trim($row['plan_content']),
+                        'company' => weeklyCompanyLabel($company),
+                        'plan' => $plan_text,
                         'path' => $img_path
                     );
                 }
             }
         }
 
-        $plan_text = trim($row['plan_content']);
         if(empty($plan_text)) continue;
 
         if(!isset($report_data[$u_name][$period][$cat][$company][$plan_text])) {
@@ -175,6 +184,7 @@ if($result) {
     
     .project-group { background: #ffffff; border: 1px solid #e2e8f0; border-left: 6px solid; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex-shrink: 0; display: flex; flex-direction: column; margin-bottom: 8px; }
     .project-name { padding: 6px 10px; font-weight: 900; color: #1e3a8a; font-size: 15px; background-color: #f1f5f9; border-bottom: 1px solid #e2e8f0; border-top-right-radius: 4px; }
+    .project-name.weekly-day-heading { color: #1e40af; background: #eaf1ff; letter-spacing: .01em; }
     
     .project-details { padding: 8px 10px; font-size: 14px; color: #334155; line-height: 1.5; border-bottom: 1px dashed #e2e8f0; word-break: break-all; } 
     .project-details:last-child { border-bottom: none; }
@@ -295,19 +305,19 @@ if($result) {
                         <div class="section-title bg-blue-600" data-new-col="false"><?= smw_h($actual_label) ?> <small>(<?= date('m.d', strtotime($tw_start)) ?>~<?= date('m.d', strtotime($tw_end)) ?>)</small></div>
                         <?php foreach($tasks['actual']['일반업무'] as $company => $plans): ?>
                             <div class="project-group" style="border-left-color: #3b82f6;">
-                                <div class="project-name">[<?= htmlspecialchars($company) ?>]</div>
+                                <div class="project-name<?= isWeekdayGroup($company) ? ' weekly-day-heading' : '' ?>">[<?= htmlspecialchars(weeklyCompanyLabel($company)) ?>]</div>
                                 <?php foreach($plans as $plan_desc => $details): ?>
                                     <div class="project-details">
                                         <div class="data-row">
                                             <span class="badge-gray" style="background:#e2e8f0; color:#475569;">진행</span>
                                             <div>
                                                 <span class="font-bold text-gray-800"><?= htmlspecialchars($plan_desc) ?></span> 
-                                                <strong style="color:#3b82f6;">(<?= formatDates($details['dates']) ?>)</strong>
+                                                <?php if(!isWeekdayGroup($company)): ?><strong style="color:#3b82f6;">(<?= formatDates($details['dates']) ?>)</strong><?php endif; ?>
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
                                         <?php if(!empty($details['result_items'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items'], !isWeekdayGroup($company)) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
@@ -319,19 +329,19 @@ if($result) {
                         <div class="section-title bg-amber-600" data-new-col="true"><?= smw_h($plan_label) ?> <small>(<?= date('m.d', strtotime($nw_start)) ?>~<?= date('m.d', strtotime($nw_end)) ?>)</small></div>
                         <?php foreach($tasks['plan']['일반업무'] as $company => $plans): ?>
                             <div class="project-group" style="border-left-color: #d97706;">
-                                <div class="project-name">[<?= htmlspecialchars($company) ?>]</div>
+                                <div class="project-name<?= isWeekdayGroup($company) ? ' weekly-day-heading' : '' ?>">[<?= htmlspecialchars(weeklyCompanyLabel($company)) ?>]</div>
                                 <?php foreach($plans as $plan_desc => $details): ?>
                                     <div class="project-details">
                                         <div class="data-row">
                                             <span class="badge-gray" style="background:#fef3c7; color:#b45309;">예정</span>
                                             <div>
                                                 <span class="font-bold text-gray-800"><?= htmlspecialchars($plan_desc) ?></span> 
-                                                <strong style="color:#d97706;">(<?= formatDates($details['dates']) ?>)</strong>
+                                                <?php if(!isWeekdayGroup($company)): ?><strong style="color:#d97706;">(<?= formatDates($details['dates']) ?>)</strong><?php endif; ?>
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
                                         <?php if(!empty($details['result_items'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items'], !isWeekdayGroup($company)) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
@@ -350,19 +360,19 @@ if($result) {
                             foreach($tasks[$period]['영업진행'] as $company => $plans): 
                         ?>
                             <div class="project-group" style="border-left-color: #059669;">
-                                <div class="project-name text-emerald-900 bg-emerald-50">[<?= htmlspecialchars($company) ?>]</div>
+                                <div class="project-name text-emerald-900 bg-emerald-50<?= isWeekdayGroup($company) ? ' weekly-day-heading' : '' ?>">[<?= htmlspecialchars(weeklyCompanyLabel($company)) ?>]</div>
                                 <?php foreach($plans as $plan_desc => $details): ?>
                                     <div class="project-details">
                                         <div class="data-row">
                                             <span class="badge-gray" style="background:#d1fae5; color:#065f46;"><?= $bLbl ?></span>
                                             <div>
                                                 <span class="font-bold text-gray-800"><?= htmlspecialchars($plan_desc) ?></span> 
-                                                <strong style="color:#059669;">(<?= formatDates($details['dates']) ?>)</strong>
+                                                <?php if(!isWeekdayGroup($company)): ?><strong style="color:#059669;">(<?= formatDates($details['dates']) ?>)</strong><?php endif; ?>
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
                                         <?php if(!empty($details['result_items'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items'], !isWeekdayGroup($company)) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
@@ -384,19 +394,19 @@ if($result) {
                                 foreach($tasks[$period][$cat] as $company => $plans): 
                         ?>
                             <div class="project-group" style="border-left-color: #475569;">
-                                <div class="project-name text-slate-800 bg-slate-200">[<?= htmlspecialchars($company) ?>]</div>
+                                <div class="project-name text-slate-800 bg-slate-200<?= isWeekdayGroup($company) ? ' weekly-day-heading' : '' ?>">[<?= htmlspecialchars(weeklyCompanyLabel($company)) ?>]</div>
                                 <?php foreach($plans as $plan_desc => $details): ?>
                                     <div class="project-details">
                                         <div class="data-row">
                                             <span class="badge-gray" style="background:<?= $bBg ?>; color:<?= $bTxt ?>;"><?= $bLbl ?></span>
                                             <div>
                                                 <span class="font-bold text-gray-800"><?= htmlspecialchars($plan_desc) ?></span> 
-                                                <strong style="color:#475569;">(<?= formatDates($details['dates']) ?>)</strong>
+                                                <?php if(!isWeekdayGroup($company)): ?><strong style="color:#475569;">(<?= formatDates($details['dates']) ?>)</strong><?php endif; ?>
                                                 <button onclick="openCommentModal('<?= implode(',', $details['task_ids']) ?>', this.getAttribute('data-title'))" data-title="<?= htmlspecialchars($plan_desc, ENT_QUOTES) ?>" class="ml-2 text-teal-600 border px-1.5 py-0.5 rounded bg-teal-50" data-html2canvas-ignore="true" style="font-size:12px;"><i class="fa-regular fa-comments"></i> <?= $details['comment_count']>0?"<span class='text-red-500 font-bold ml-1'>{$details['comment_count']}</span>":"" ?></button>
                                             </div>
                                         </div>
                                         <?php if(!empty($details['result_items'])): ?>
-                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items']) ?></div></div>
+                                            <div class="data-row mt-1"><span class="badge-green">결과</span><div class="html-content"><?= renderResultItems($details['result_items'], !isWeekdayGroup($company)) ?></div></div>
                                         <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
